@@ -11,22 +11,35 @@ import (
 
 func (m Model) View() string {
 	width := max(1, m.contentWidth)
-	title := ui.SearchTitleStyle.Width(width).Render("Search Surfline")
 	input := ui.SearchInputStyle.Width(width).Render(m.Input.View())
 	body := m.resultsView(width)
 	help := m.helpView(width)
 
-	sections := []string{title, "", input, "", body}
+	sections := []string{input, "", body}
 	if m.Status != "" {
 		sections = append(sections, "", ui.SuccessStyle.Width(width).Render(m.Status))
 	}
 	sections = append(sections, "", help)
-
-	column := lipgloss.NewStyle().
+	controls := lipgloss.NewStyle().
 		Width(width).
 		Align(lipgloss.Left).
-		MarginTop(1).
 		Render(lipgloss.JoinVertical(lipgloss.Left, sections...))
+
+	header := ui.GradientText(ui.SearchBanner)
+	headerWidth := lipgloss.Width(ui.SearchBanner)
+	if m.terminalWidth > 0 && headerWidth > m.terminalWidth-(wideHorizontalMargin*2) {
+		header = ui.Title("surfista")
+		headerWidth = lipgloss.Width(header)
+	}
+	layoutWidth := max(width, headerWidth)
+	header = ui.SearchTitleStyle.Width(layoutWidth).Render(header)
+	controls = lipgloss.PlaceHorizontal(layoutWidth, lipgloss.Center, controls)
+
+	column := lipgloss.NewStyle().
+		Width(layoutWidth).
+		Align(lipgloss.Left).
+		MarginTop(1).
+		Render(lipgloss.JoinVertical(lipgloss.Left, header, "", controls))
 
 	if m.terminalWidth <= 0 {
 		return column
@@ -51,10 +64,9 @@ func (m Model) resultsView(width int) string {
 	rows := make([]string, 0, len(m.Results)+1)
 	for index, spot := range m.Results {
 		marker := "  "
-		style := ui.SearchResultStyle
-		if index == m.Cursor {
+		selected := index == m.Cursor
+		if selected {
 			marker = "> "
-			style = ui.SearchSelectedResultStyle
 		}
 
 		location := strings.Trim(strings.Join([]string{spot.Region, spot.Country}, ", "), ", ")
@@ -62,9 +74,13 @@ func (m Model) resultsView(width int) string {
 		if location != "" {
 			line += " — " + location
 		}
-		rows = append(rows, style.Width(width).MaxWidth(width).Render(line))
+		if selected {
+			rows = append(rows, ui.GradientBackground(" "+line, width))
+		} else {
+			rows = append(rows, ui.SearchResultStyle.Width(width).MaxWidth(width).Render(line))
+		}
 
-		if index == m.Cursor && spot.URL != "" {
+		if selected && spot.URL != "" {
 			rows = append(rows, ui.SearchURLStyle.MaxWidth(width).Render(spot.URL))
 		}
 	}
