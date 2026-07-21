@@ -3,13 +3,25 @@ package search
 import (
 	"fmt"
 	"time"
-	"unicode/utf8"
 
+	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 )
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.resize(msg.Width)
+		return m, nil
+
+	case spinner.TickMsg:
+		if !m.Loading {
+			return m, nil
+		}
+		var cmd tea.Cmd
+		m.Spinner, cmd = m.Spinner.Update(msg)
+		return m, cmd
+
 	case SearchResultsMsg:
 		if msg.RequestID != m.activeRequestID {
 			return m, nil
@@ -56,7 +68,6 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyPressMsg:
-		key := msg.Key()
 		if m.InResults() {
 			switch msg.String() {
 			case "up", "k":
@@ -73,29 +84,24 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m, nil
 		}
 
-		switch msg.String() {
-		case "enter":
+		if msg.String() == "enter" {
 			return m, m.submit()
-		case "backspace", "ctrl+h":
-			if m.Query != "" && !m.Loading {
-				_, size := utf8.DecodeLastRuneInString(m.Query)
-				m.Query = m.Query[:len(m.Query)-size]
-				m.Results = nil
-				m.Cursor = 0
-				m.HasSearched = false
-				m.Err = nil
-			}
-		default:
-			if key.Text != "" && !m.Loading {
-				m.Query += key.Text
-				m.Results = nil
-				m.Cursor = 0
-				m.HasSearched = false
-				m.Err = nil
-				m.Status = ""
-			}
 		}
 	}
 
-	return m, nil
+	if m.Loading || m.InResults() {
+		return m, nil
+	}
+
+	previousValue := m.Input.Value()
+	var cmd tea.Cmd
+	m.Input, cmd = m.Input.Update(msg)
+	if m.Input.Value() != previousValue {
+		m.Results = nil
+		m.Cursor = 0
+		m.HasSearched = false
+		m.Err = nil
+		m.Status = ""
+	}
+	return m, cmd
 }

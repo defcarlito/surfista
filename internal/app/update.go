@@ -11,6 +11,12 @@ func (m Model) Init() tea.Cmd {
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if _, ok := msg.(tea.WindowSizeMsg); ok {
+		var cmd tea.Cmd
+		m.search, cmd = m.search.Update(msg)
+		return m, cmd
+	}
+
 	if key, ok := msg.(tea.KeyPressMsg); ok {
 		if key.String() == "ctrl+c" {
 			return m, tea.Quit
@@ -20,7 +26,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch key.String() {
 			case "s", "/":
 				m.current = searchScreen
-				return m, nil
+				return m, m.search.Focus()
 			case "q":
 				return m, tea.Quit
 			}
