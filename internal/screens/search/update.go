@@ -2,6 +2,7 @@ package search
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"charm.land/bubbles/v2/spinner"
@@ -13,6 +14,13 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.resize(msg.Width)
 		return m, nil
+
+	case liveSearchMsg:
+		query := strings.TrimSpace(m.Input.Value())
+		if msg.RequestID != m.activeRequestID || msg.Query != query || m.mode != typingMode {
+			return m, nil
+		}
+		return m, m.startSearch(msg.Query, msg.RequestID)
 
 	case spinner.TickMsg:
 		if !m.Loading {
@@ -27,6 +35,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m, nil
 		}
 		m.Loading = false
+		m.Pending = false
 		m.HasSearched = true
 		m.Err = nil
 		m.Results = msg.Spots
@@ -38,6 +47,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m, nil
 		}
 		m.Loading = false
+		m.Pending = false
 		m.HasSearched = true
 		m.Results = nil
 		m.Err = msg.Err
@@ -68,7 +78,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyPressMsg:
-		if m.InResults() {
+		if m.Selecting() {
 			switch msg.String() {
 			case "up", "k":
 				if m.Cursor > 0 {
@@ -85,23 +95,27 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 
 		if msg.String() == "enter" {
-			return m, m.submit()
+			if m.InResults() {
+				m.mode = selectingMode
+				m.Cursor = 0
+				m.Input.Blur()
+				return m, nil
+			}
+			return m, m.searchImmediately()
 		}
 	}
 
-	if m.Loading || m.InResults() {
+	if m.mode == selectingMode {
 		return m, nil
 	}
 
 	previousValue := m.Input.Value()
-	var cmd tea.Cmd
-	m.Input, cmd = m.Input.Update(msg)
-	if m.Input.Value() != previousValue {
-		m.Results = nil
-		m.Cursor = 0
-		m.HasSearched = false
-		m.Err = nil
-		m.Status = ""
+	var inputCmd tea.Cmd
+	m.Input, inputCmd = m.Input.Update(msg)
+	if m.Input.Value() == previousValue {
+		return m, inputCmd
 	}
-	return m, cmd
+
+	liveCmd := m.queueLiveSearch()
+	return m, tea.Batch(inputCmd, liveCmd)
 }

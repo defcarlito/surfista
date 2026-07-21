@@ -23,3 +23,8 @@ type SpotAddedMsg struct {
 type clearStatusMsg struct {
 	StatusID uint64
 }
+
+type liveSearchMsg struct {
+	RequestID uint64
+	Query     string
+}

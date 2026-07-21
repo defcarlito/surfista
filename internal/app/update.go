@@ -31,10 +31,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 			}
 		} else if key.String() == "esc" {
-			if m.search.Escape() {
+			returnHome, cmd := m.search.Escape()
+			if returnHome {
 				m.current = homeScreen
 			}
-			return m, nil
+			return m, cmd
 		}
 	}
 

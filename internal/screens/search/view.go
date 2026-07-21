@@ -49,6 +49,8 @@ func (m Model) View() string {
 
 func (m Model) resultsView(width int) string {
 	switch {
+	case m.Pending:
+		return ui.SearchEmptyStyle.Width(width).Render("Updating results…")
 	case m.Loading:
 		return ui.SearchResultStyle.Width(width).Render(
 			fmt.Sprintf("%s Searching Surfline for %q…", m.Spinner.View(), m.Input.Value()),
@@ -56,7 +58,7 @@ func (m Model) resultsView(width int) string {
 	case m.Err != nil:
 		return ui.ErrorStyle.Width(width).Render("Search failed: " + m.Err.Error())
 	case !m.HasSearched:
-		return ui.SearchEmptyStyle.Width(width).Render("Type a surf spot or location, then press Enter.")
+		return ui.SearchEmptyStyle.Width(width).Render("Start typing to search Surfline.")
 	case len(m.Results) == 0:
 		return ui.SearchEmptyStyle.Width(width).Render("No matching Surfline spots found.")
 	}
@@ -64,7 +66,7 @@ func (m Model) resultsView(width int) string {
 	rows := make([]string, 0, len(m.Results)+1)
 	for index, spot := range m.Results {
 		marker := "  "
-		selected := index == m.Cursor
+		selected := m.Selecting() && index == m.Cursor
 		if selected {
 			marker = "> "
 		}
@@ -88,9 +90,14 @@ func (m Model) resultsView(width int) string {
 }
 
 func (m Model) helpView(width int) string {
-	text := "Enter search • Esc clear/back • Ctrl+C quit"
-	if m.InResults() {
-		text = "↑/k ↓/j navigate • Enter track • Esc clear"
+	text := "Type to search • Esc clear/back • Ctrl+C quit"
+	switch {
+	case m.Selecting():
+		text = "↑/k ↓/j navigate • Enter track • Esc edit"
+	case m.InResults():
+		text = "Enter select • keep typing to refine • Esc clear"
+	case m.Pending || m.Loading:
+		text = "Keep typing to refine • Esc clear • Ctrl+C quit"
 	}
 	return ui.SearchHelpStyle.Width(width).Render(text)
 }

@@ -57,7 +57,7 @@ func TestTypingDoesNotShowAnEmptyResultState(t *testing.T) {
 	t.Parallel()
 
 	model := New(&fakeSearcher{}, &fakeTracker{})
-	updated, _ := model.Update(key(0, "Honolua"))
+	updated, cmd := model.Update(key(0, "Honolua"))
 
 	if updated.Input.Value() != "Honolua" {
 		t.Fatalf("input value = %q, want Honolua", updated.Input.Value())
@@ -65,8 +65,69 @@ func TestTypingDoesNotShowAnEmptyResultState(t *testing.T) {
 	if updated.HasSearched {
 		t.Fatal("typing marked the query as searched")
 	}
+	if !updated.Pending || cmd == nil {
+		t.Fatal("typing did not queue a live search")
+	}
 	if strings.Contains(updated.View(), "No matching Surfline spots found") {
 		t.Fatal("typing displayed an empty search result before submission")
+	}
+}
+
+func TestTypingRunsDebouncedLiveSearch(t *testing.T) {
+	t.Parallel()
+
+	want := []surf.Spot{{ID: "spot-1", Name: "Honolua Bay"}}
+	searcher := &fakeSearcher{spots: want}
+	model := New(searcher, &fakeTracker{})
+	model.Input.SetVirtualCursor(false)
+
+	pending, debounceCmd := model.Update(key(0, "Honolua"))
+	if debounceCmd == nil || !pending.Pending || pending.Loading {
+		t.Fatalf("live search was not queued: %+v", pending)
+	}
+
+	rawDebounceMsg := debounceCmd()
+	debounceMsg, ok := rawDebounceMsg.(liveSearchMsg)
+	if !ok {
+		t.Fatalf("debounce returned unexpected message type %T", rawDebounceMsg)
+	}
+	loading, searchCmd := pending.Update(debounceMsg)
+	if searchCmd == nil || !loading.Loading || loading.Pending {
+		t.Fatalf("debounced query did not start a search: %+v", loading)
+	}
+
+	results, _ := loading.Update(searchCommandResult(t, searchCmd))
+	if results.Loading || len(results.Results) != 1 || results.Results[0] != want[0] {
+		t.Fatalf("unexpected live-search results: %+v", results)
+	}
+	if searcher.query != "Honolua" {
+		t.Fatalf("live-search query = %q, want Honolua", searcher.query)
+	}
+}
+
+func TestTypingDuringSearchQueuesLatestQueryAndRejectsOldResponse(t *testing.T) {
+	t.Parallel()
+
+	model := New(&fakeSearcher{}, &fakeTracker{})
+	model.Input.SetVirtualCursor(false)
+	model.Input.SetValue("Hono")
+	model.Loading = true
+	model.HasSearched = true
+	model.nextRequestID = 1
+	model.activeRequestID = 1
+
+	pending, cmd := model.Update(key(0, "lua"))
+	if cmd == nil || pending.Input.Value() != "Honolua" {
+		t.Fatalf("typing during search was not accepted: %+v", pending)
+	}
+	if pending.Loading || !pending.Pending || pending.activeRequestID != 2 {
+		t.Fatalf("latest query did not replace the active search: %+v", pending)
+	}
+
+	stale := SearchResultsMsg{RequestID: 1, Query: "Hono", Spots: []surf.Spot{{ID: "stale"}}}
+	afterStale, _ := pending.Update(stale)
+	if len(afterStale.Results) != 0 || !afterStale.Pending {
+		t.Fatalf("stale results changed the latest query state: %+v", afterStale)
 	}
 }
 
@@ -127,6 +188,7 @@ func TestAddSelectedResult(t *testing.T) {
 	model := New(&fakeSearcher{}, tracker)
 	model.Results = []surf.Spot{{ID: "other", Name: "Other"}, spot}
 	model.Cursor = 1
+	model.mode = selectingMode
 
 	adding, cmd := model.Update(key(tea.KeyEnter, ""))
 	if cmd == nil {
@@ -138,6 +200,26 @@ func TestAddSelectedResult(t *testing.T) {
 	}
 	if added.Status == "" || clearCmd == nil {
 		t.Fatalf("success feedback missing: %+v", added)
+	}
+}
+
+func TestEnterSwitchesFromTypingToSelection(t *testing.T) {
+	t.Parallel()
+
+	model := New(&fakeSearcher{}, &fakeTracker{})
+	model.Input.SetValue("Honolua")
+	model.Results = []surf.Spot{{ID: "one", Name: "Honolua Bay"}, {ID: "two", Name: "Honolua Bluffs"}}
+	model.HasSearched = true
+
+	selecting, cmd := model.Update(key(tea.KeyEnter, ""))
+	if cmd != nil {
+		t.Fatal("entering selection mode returned an unexpected command")
+	}
+	if !selecting.Selecting() || selecting.Input.Focused() {
+		t.Fatalf("Enter did not switch to selection mode: %+v", selecting)
+	}
+	if selecting.Cursor != 0 {
+		t.Fatalf("selection cursor = %d, want 0", selecting.Cursor)
 	}
 }
 
@@ -167,6 +249,9 @@ func TestWindowResizeUpdatesContentAndInputWidths(t *testing.T) {
 			t.Fatalf("input border does not retain a two-cell margin: %q", line)
 		}
 	}
+	if strings.Contains(narrow.View(), "Search Surfline") {
+		t.Fatal("narrow view rendered the old text title")
+	}
 }
 
 func TestResultKeyboardNavigationIsPreserved(t *testing.T) {
@@ -174,6 +259,7 @@ func TestResultKeyboardNavigationIsPreserved(t *testing.T) {
 
 	model := New(&fakeSearcher{}, &fakeTracker{})
 	model.Results = []surf.Spot{{ID: "one"}, {ID: "two"}, {ID: "three"}}
+	model.mode = selectingMode
 
 	model, _ = model.Update(key(tea.KeyDown, ""))
 	if model.Cursor != 1 {
@@ -201,15 +287,27 @@ func TestEscapeClearsSearchBeforeReturning(t *testing.T) {
 	model.Input.SetValue("Honolua")
 	model.Results = []surf.Spot{{ID: "spot-1", Name: "Honolua Bay"}}
 	model.HasSearched = true
+	model.mode = selectingMode
 
-	if model.Escape() {
-		t.Fatal("first Escape requested a return instead of clearing the search")
+	returnHome, _ := model.Escape()
+	if returnHome {
+		t.Fatal("first Escape requested a return instead of leaving selection mode")
+	}
+	if model.mode != typingMode || model.Input.Value() != "Honolua" || len(model.Results) != 1 {
+		t.Fatalf("first Escape did not preserve results for editing: %+v", model)
+	}
+
+	returnHome, _ = model.Escape()
+	if returnHome {
+		t.Fatal("second Escape requested a return instead of clearing the search")
 	}
 	if model.Input.Value() != "" || len(model.Results) != 0 || model.HasSearched {
-		t.Fatalf("first Escape did not clear search state: %+v", model)
+		t.Fatalf("second Escape did not clear search state: %+v", model)
 	}
-	if !model.Escape() {
-		t.Fatal("second Escape did not request a return")
+
+	returnHome, _ = model.Escape()
+	if !returnHome {
+		t.Fatal("third Escape did not request a return")
 	}
 }
 

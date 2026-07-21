@@ -15,10 +15,18 @@ import (
 
 const (
 	requestTimeout          = 20 * time.Second
+	liveSearchDelay         = 180 * time.Millisecond
 	maxContentWidth         = 60
 	wideHorizontalMargin    = 2
 	narrowHorizontalMargin  = 1
 	narrowTerminalThreshold = 20
+)
+
+type interactionMode uint8
+
+const (
+	typingMode interactionMode = iota
+	selectingMode
 )
 
 type Tracker interface {
@@ -29,6 +37,7 @@ type Model struct {
 	Results     []surf.Spot
 	Cursor      int
 	Loading     bool
+	Pending     bool
 	HasSearched bool
 	Err         error
 	Status      string
@@ -42,6 +51,7 @@ type Model struct {
 	statusID        uint64
 	terminalWidth   int
 	contentWidth    int
+	mode            interactionMode
 }
 
 func New(searcher surf.SpotSearcher, tracker Tracker) Model {
@@ -73,10 +83,15 @@ func New(searcher surf.SpotSearcher, tracker Tracker) Model {
 }
 
 func (m Model) InResults() bool {
-	return len(m.Results) > 0 && !m.Loading
+	return len(m.Results) > 0 && !m.Loading && !m.Pending
+}
+
+func (m Model) Selecting() bool {
+	return m.mode == selectingMode && m.InResults()
 }
 
 func (m *Model) Focus() tea.Cmd {
+	m.mode = typingMode
 	return m.Input.Focus()
 }
 
@@ -101,20 +116,28 @@ func responsiveContentWidth(terminalWidth int) int {
 	return max(1, min(maxContentWidth, terminalWidth-(margin*2)))
 }
 
-func (m *Model) Escape() bool {
-	if m.Input.Value() == "" && len(m.Results) == 0 && !m.Loading && m.Err == nil && m.Status == "" {
-		return true
+func (m *Model) Escape() (bool, tea.Cmd) {
+	if m.Selecting() {
+		m.mode = typingMode
+		m.Cursor = 0
+		return false, m.Input.Focus()
+	}
+
+	if m.Input.Value() == "" && len(m.Results) == 0 && !m.Loading && !m.Pending && m.Err == nil && m.Status == "" {
+		return true, nil
 	}
 
 	m.Input.Reset()
 	m.Results = nil
 	m.Cursor = 0
 	m.Loading = false
+	m.Pending = false
 	m.HasSearched = false
 	m.Err = nil
 	m.Status = ""
-	m.activeRequestID++ // Any in-flight response is now stale.
-	return false
+	m.mode = typingMode
+	m.invalidateRequests()
+	return false, m.Input.Focus()
 }
 
 func (m Model) searchCmd(query string, requestID uint64) tea.Cmd {
@@ -130,22 +153,55 @@ func (m Model) searchCmd(query string, requestID uint64) tea.Cmd {
 	}
 }
 
-func (m *Model) submit() tea.Cmd {
+func (m *Model) searchImmediately() tea.Cmd {
 	query := strings.TrimSpace(m.Input.Value())
 	if query == "" || m.Loading || m.searcher == nil {
 		return nil
 	}
 
-	m.Input.SetValue(query)
-	m.Loading = true
-	m.HasSearched = true
+	requestID := m.nextRequest()
+	return m.startSearch(query, requestID)
+}
+
+func (m *Model) queueLiveSearch() tea.Cmd {
+	query := strings.TrimSpace(m.Input.Value())
+	requestID := m.nextRequest()
+	m.Loading = false
+	m.Pending = query != ""
+	m.HasSearched = false
 	m.Err = nil
 	m.Status = ""
 	m.Results = nil
 	m.Cursor = 0
+	m.mode = typingMode
+
+	if query == "" || m.searcher == nil {
+		return nil
+	}
+
+	return tea.Tick(liveSearchDelay, func(time.Time) tea.Msg {
+		return liveSearchMsg{RequestID: requestID, Query: query}
+	})
+}
+
+func (m *Model) startSearch(query string, requestID uint64) tea.Cmd {
+	m.Loading = true
+	m.Pending = false
+	m.HasSearched = true
+	m.Err = nil
+	m.Results = nil
+	m.Cursor = 0
+	return tea.Batch(m.searchCmd(query, requestID), m.Spinner.Tick)
+}
+
+func (m *Model) nextRequest() uint64 {
 	m.nextRequestID++
 	m.activeRequestID = m.nextRequestID
-	return tea.Batch(m.searchCmd(query, m.activeRequestID), m.Spinner.Tick)
+	return m.activeRequestID
+}
+
+func (m *Model) invalidateRequests() {
+	m.nextRequest()
 }
 
 func (m Model) addSelectedCmd() tea.Cmd {
