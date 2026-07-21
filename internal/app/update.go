@@ -1,0 +1,46 @@
+package app
+
+import (
+	tea "charm.land/bubbletea/v2"
+
+	"surfista/internal/screens/search"
+)
+
+func (m Model) Init() tea.Cmd {
+	return nil
+}
+
+func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if key, ok := msg.(tea.KeyPressMsg); ok {
+		if key.String() == "ctrl+c" {
+			return m, tea.Quit
+		}
+
+		if m.current == homeScreen {
+			switch key.String() {
+			case "s", "/":
+				m.current = searchScreen
+				return m, nil
+			case "q":
+				return m, tea.Quit
+			}
+		} else if key.String() == "esc" {
+			if m.search.Escape() {
+				m.current = homeScreen
+			}
+			return m, nil
+		}
+	}
+
+	if added, ok := msg.(search.SpotAddedMsg); ok && added.Err == nil && added.Added {
+		m.tracked = append(m.tracked, added.Spot)
+	}
+
+	if m.current == searchScreen {
+		var cmd tea.Cmd
+		m.search, cmd = m.search.Update(msg)
+		return m, cmd
+	}
+
+	return m, nil
+}
