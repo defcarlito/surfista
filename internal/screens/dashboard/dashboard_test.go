@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"surfista/internal/surf"
+	"surfista/internal/ui"
 )
 
 type fakeForecastProvider struct {
@@ -91,7 +92,8 @@ func TestViewShowsTodayThroughNextMidnight(t *testing.T) {
 	model.now = func() time.Time { return now }
 	model, _ = model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 
-	plain := ansi.Strip(model.View())
+	rendered := model.View()
+	plain := ansi.Strip(rendered)
 	for _, want := range []string{"Honolua Bay", "12a", "6a", "12p", "1–2′"} {
 		if !strings.Contains(plain, want) {
 			t.Fatalf("view does not contain %q:\n%s", want, plain)
@@ -105,6 +107,13 @@ func TestViewShowsTodayThroughNextMidnight(t *testing.T) {
 	}
 	if count := strings.Count(plain, "12a"); count != 2 {
 		t.Fatalf("12a header count = %d, want start and end only:\n%s", count, plain)
+	}
+	if strings.Contains(rendered, "\x1b[48") {
+		t.Fatal("current forecast cell still uses a background highlight")
+	}
+	currentOutline := ui.DashboardCurrentBorderStyle.Render(strings.Repeat("─", 7))
+	if !strings.Contains(rendered, currentOutline) {
+		t.Fatal("current forecast cell does not use the highlighted outline")
 	}
 }
 

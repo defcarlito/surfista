@@ -96,14 +96,12 @@ var (
 	DashboardSlotStyle = lipgloss.NewStyle().
 				Align(lipgloss.Center)
 
-	DashboardCurrentSlotStyle = lipgloss.NewStyle().
-					Bold(true).
-					Foreground(OceanPalette.Depth).
-					Background(OceanPalette.Foam).
-					Align(lipgloss.Center)
-
 	DashboardBorderStyle = lipgloss.NewStyle().
 				Foreground(borderColor)
+
+	DashboardCurrentBorderStyle = lipgloss.NewStyle().
+					Bold(true).
+					Foreground(OceanPalette.Foam)
 
 	DashboardHelpStyle = lipgloss.NewStyle().
 				Faint(true).

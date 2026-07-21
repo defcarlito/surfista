@@ -59,7 +59,7 @@ func (m Model) forecastTable(width int) string {
 
 	headerCells := make([]string, 0, len(dashboardHours))
 	for _, hour := range dashboardHours {
-		headerCells = append(headerCells, tableCell(formatDashboardHour(hour), slotWidth, false))
+		headerCells = append(headerCells, tableCell(formatDashboardHour(hour), slotWidth))
 	}
 	rows := []string{" " + strings.Join(headerCells, " ") + " "}
 
@@ -92,25 +92,28 @@ func (m Model) spotCard(spot surf.Spot, slotWidth int) string {
 
 	ratings := make([]string, 0, len(dashboardHours))
 	heights := make([]string, 0, len(dashboardHours))
-	for _, hour := range dashboardHours {
+	currentIndex := -1
+	for index, hour := range dashboardHours {
 		slot, ok := slots[hour]
 		if !ok {
-			ratings = append(ratings, tableCell("—", slotWidth, false))
-			heights = append(heights, tableCell("—", slotWidth, false))
+			ratings = append(ratings, tableCell("—", slotWidth))
+			heights = append(heights, tableCell("—", slotWidth))
 			continue
 		}
-		current := isCurrentDashboardHour(hour, now)
-		ratings = append(ratings, tableCell(compactRating(slot.Rating, slotWidth), slotWidth, current))
-		heights = append(heights, tableCell(compactHeight(slot.SurfHeight, slotWidth), slotWidth, current))
+		if isCurrentDashboardHour(hour, now) {
+			currentIndex = index
+		}
+		ratings = append(ratings, tableCell(compactRating(slot.Rating, slotWidth), slotWidth))
+		heights = append(heights, tableCell(compactHeight(slot.SurfHeight, slotWidth), slotWidth))
 	}
 
 	return strings.Join([]string{
 		solidBorder("╭", "╮", innerWidth),
 		borderedLine(name),
-		segmentedBorder("├", "┬", "┤", slotWidth),
-		segmentedLine(ratings),
-		segmentedLine(heights),
-		segmentedBorder("╰", "┴", "╯", slotWidth),
+		segmentedBorder("├", "┬", "┤", slotWidth, currentIndex),
+		segmentedLine(ratings, currentIndex),
+		segmentedLine(heights, currentIndex),
+		segmentedBorder("╰", "┴", "╯", slotWidth, currentIndex),
 	}, "\n")
 }
 
@@ -129,16 +132,28 @@ func borderedLine(content string) string {
 	return border("│") + content + border("│")
 }
 
-func segmentedLine(cells []string) string {
-	return border("│") + strings.Join(cells, border("│")) + border("│")
+func segmentedLine(cells []string, currentIndex int) string {
+	var line strings.Builder
+	for boundary, cell := range cells {
+		line.WriteString(cellBorder("│", boundary, currentIndex))
+		line.WriteString(cell)
+	}
+	line.WriteString(cellBorder("│", len(cells), currentIndex))
+	return line.String()
 }
 
-func segmentedBorder(left, divider, right string, slotWidth int) string {
-	segments := make([]string, len(dashboardHours))
-	for index := range segments {
-		segments[index] = strings.Repeat("─", slotWidth)
+func segmentedBorder(left, divider, right string, slotWidth, currentIndex int) string {
+	var line strings.Builder
+	for index := range dashboardHours {
+		junction := divider
+		if index == 0 {
+			junction = left
+		}
+		line.WriteString(cellBorder(junction, index, currentIndex))
+		line.WriteString(borderSegment(strings.Repeat("─", slotWidth), index == currentIndex))
 	}
-	return border(left + strings.Join(segments, divider) + right)
+	line.WriteString(cellBorder(right, len(dashboardHours), currentIndex))
+	return line.String()
 }
 
 func solidBorder(left, right string, innerWidth int) string {
@@ -147,6 +162,17 @@ func solidBorder(left, right string, innerWidth int) string {
 
 func border(value string) string {
 	return ui.DashboardBorderStyle.Render(value)
+}
+
+func cellBorder(value string, boundary, currentIndex int) string {
+	return borderSegment(value, currentIndex >= 0 && (boundary == currentIndex || boundary == currentIndex+1))
+}
+
+func borderSegment(value string, current bool) string {
+	if current {
+		return ui.DashboardCurrentBorderStyle.Render(value)
+	}
+	return border(value)
 }
 
 func slotsForLocalDay(forecast surf.Forecast, now time.Time) []surf.ForecastSlot {
@@ -181,12 +207,8 @@ func slotsByHour(forecast surf.Forecast, now time.Time) map[int]surf.ForecastSlo
 	return slots
 }
 
-func tableCell(value string, width int, current bool) string {
-	style := ui.DashboardSlotStyle.Width(width).MaxWidth(width).Align(lipgloss.Center)
-	if current {
-		style = ui.DashboardCurrentSlotStyle.Width(width).MaxWidth(width).Align(lipgloss.Center)
-	}
-	return style.Render(value)
+func tableCell(value string, width int) string {
+	return ui.DashboardSlotStyle.Width(width).MaxWidth(width).Align(lipgloss.Center).Render(value)
 }
 
 func compactRating(rating string, width int) string {
