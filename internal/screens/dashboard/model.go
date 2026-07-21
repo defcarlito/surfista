@@ -50,6 +50,17 @@ func (m Model) Init() tea.Cmd {
 	return tea.Batch(commands...)
 }
 
+// PendingForecasts reports how many favorite forecasts have not resolved yet.
+func (m Model) PendingForecasts() int {
+	pending := 0
+	for _, state := range m.forecasts {
+		if state.loading {
+			pending++
+		}
+	}
+	return pending
+}
+
 // Add makes a newly tracked spot visible immediately and starts its forecast.
 func (m *Model) Add(spot surf.Spot) tea.Cmd {
 	for _, tracked := range m.spots {

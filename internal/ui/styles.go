@@ -10,7 +10,12 @@ import (
 
 const (
 	SearchInputFrameWidth = 4
-	SearchBanner          = "                              __                         _______          \n" +
+	LoadingBanner         = "                    _____      __       \n" +
+		"   _______  _______/ __(_)____/ /_____ _\n" +
+		"  / ___/ / / / ___/ /_/ / ___/ __/ __ `/\n" +
+		" (__  ) /_/ / /  / __/ (__  ) /_/ /_/ / \n" +
+		"/____/\\__,_/_/  /_/ /_/____/\\__/\\__,_/  "
+	SearchBanner = "                              __                         _______          \n" +
 		"   ________  ____ ___________/ /_       _______  _______/ __/ (_)___  ___ \n" +
 		"  / ___/ _ \\/ __ `/ ___/ ___/ __ \\     / ___/ / / / ___/ /_/ / / __ \\/ _ \\\n" +
 		" (__  )  __/ /_/ / /  / /__/ / / /    (__  ) /_/ / /  / __/ / / / / /  __/\n" +
@@ -73,6 +78,10 @@ var (
 
 	SearchSpinnerStyle = lipgloss.NewStyle().
 				Foreground(primaryColor)
+
+	LoadingStatusStyle = lipgloss.NewStyle().
+				Foreground(mutedColor).
+				Align(lipgloss.Center)
 
 	SearchHelpStyle = lipgloss.NewStyle().
 			Faint(true).

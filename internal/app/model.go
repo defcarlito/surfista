@@ -2,6 +2,7 @@ package app
 
 import (
 	"surfista/internal/screens/dashboard"
+	"surfista/internal/screens/loading"
 	"surfista/internal/screens/search"
 	"surfista/internal/surf"
 )
@@ -9,20 +10,31 @@ import (
 type screen int
 
 const (
-	homeScreen screen = iota
+	loadingScreen screen = iota
+	homeScreen
 	searchScreen
 )
 
 type Model struct {
-	current   screen
-	search    search.Model
-	dashboard dashboard.Model
+	current          screen
+	search           search.Model
+	dashboard        dashboard.Model
+	loading          loading.Model
+	initialForecasts int
 }
 
 func New(searcher surf.SpotSearcher, tracker search.Tracker, forecaster surf.ForecastProvider, tracked []surf.Spot, loadErr error) Model {
+	dashboardModel := dashboard.New(forecaster, tracked, loadErr)
+	initialForecasts := dashboardModel.PendingForecasts()
+	current := homeScreen
+	if initialForecasts > 0 {
+		current = loadingScreen
+	}
 	return Model{
-		current:   homeScreen,
-		search:    search.New(searcher, tracker),
-		dashboard: dashboard.New(forecaster, tracked, loadErr),
+		current:          current,
+		search:           search.New(searcher, tracker),
+		dashboard:        dashboardModel,
+		loading:          loading.New(initialForecasts),
+		initialForecasts: initialForecasts,
 	}
 }

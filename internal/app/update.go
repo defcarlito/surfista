@@ -8,19 +8,27 @@ import (
 )
 
 func (m Model) Init() tea.Cmd {
-	return m.dashboard.Init()
+	return tea.Batch(m.dashboard.Init(), m.loading.Init())
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if _, ok := msg.(tea.WindowSizeMsg); ok {
-		var searchCmd, dashboardCmd tea.Cmd
+		var searchCmd, dashboardCmd, loadingCmd tea.Cmd
 		m.search, searchCmd = m.search.Update(msg)
 		m.dashboard, dashboardCmd = m.dashboard.Update(msg)
-		return m, tea.Batch(searchCmd, dashboardCmd)
+		m.loading, loadingCmd = m.loading.Update(msg)
+		return m, tea.Batch(searchCmd, dashboardCmd, loadingCmd)
 	}
 
 	if _, ok := msg.(dashboard.ForecastLoadedMsg); ok {
 		m.dashboard, _ = m.dashboard.Update(msg)
+		if m.current == loadingScreen {
+			pending := m.dashboard.PendingForecasts()
+			m.loading.SetCompleted(m.initialForecasts - pending)
+			if pending == 0 {
+				m.current = homeScreen
+			}
+		}
 		return m, nil
 	}
 
@@ -29,7 +37,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 
-		if m.current == homeScreen {
+		switch m.current {
+		case homeScreen:
 			switch key.String() {
 			case "s", "/":
 				m.current = searchScreen
@@ -37,12 +46,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "q":
 				return m, tea.Quit
 			}
-		} else if key.String() == "esc" {
-			returnHome, cmd := m.search.Escape()
-			if returnHome {
-				m.current = homeScreen
+		case searchScreen:
+			if key.String() == "esc" {
+				returnHome, cmd := m.search.Escape()
+				if returnHome {
+					m.current = homeScreen
+				}
+				return m, cmd
 			}
-			return m, cmd
 		}
 	}
 
@@ -59,6 +70,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if m.current == searchScreen {
 		var cmd tea.Cmd
 		m.search, cmd = m.search.Update(msg)
+		return m, cmd
+	}
+	if m.current == loadingScreen {
+		var cmd tea.Cmd
+		m.loading, cmd = m.loading.Update(msg)
 		return m, cmd
 	}
 
