@@ -90,10 +90,6 @@ var (
 	SearchEmptyStyle = lipgloss.NewStyle().
 				Foreground(mutedColor)
 
-	DashboardTitleStyle = lipgloss.NewStyle().
-				Bold(true).
-				Align(lipgloss.Center)
-
 	DashboardSubtitleStyle = lipgloss.NewStyle().
 				Foreground(mutedColor).
 				Align(lipgloss.Center)

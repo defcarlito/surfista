@@ -25,7 +25,6 @@ var dashboardHours = [...]int{0, 3, 6, 9, 12, 15, 18, 21, 24}
 func (m Model) View() string {
 	width := m.contentWidth()
 	sections := []string{
-		ui.DashboardTitleStyle.Width(width).Render(ui.Title("Surfista")),
 		ui.DashboardSubtitleStyle.Width(width).Render("Today's surf conditions"),
 	}
 
