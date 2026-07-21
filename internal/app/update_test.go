@@ -77,6 +77,32 @@ func TestNoInitialForecastsStartsOnDashboard(t *testing.T) {
 	}
 }
 
+func TestDashboardKeysReachDashboardModel(t *testing.T) {
+	t.Parallel()
+
+	model := New(
+		resizeTestSearcher{},
+		resizeTestTracker{},
+		nil,
+		[]surf.Spot{{ID: "honolua", Name: "Honolua Bay"}},
+		nil,
+	)
+	initialView := model.dashboard.View()
+
+	updatedModel, _ := model.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
+	updated := updatedModel.(Model)
+	selectedView := updated.dashboard.View()
+	if selectedView == initialView {
+		t.Fatal("j did not change dashboard selection rendering")
+	}
+
+	updatedModel, _ = updated.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
+	updated = updatedModel.(Model)
+	if updated.dashboard.View() != initialView {
+		t.Fatal("Esc did not restore the dashboard's initial unselected view")
+	}
+}
+
 type appTestForecastProvider struct{}
 
 func (*appTestForecastProvider) Forecast(context.Context, string) (surf.Forecast, error) {

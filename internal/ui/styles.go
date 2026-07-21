@@ -108,6 +108,10 @@ var (
 					Bold(true).
 					Foreground(OceanPalette.Foam)
 
+	DashboardSelectedBorderStyle = lipgloss.NewStyle().
+					Bold(true).
+					Foreground(OceanPalette.White)
+
 	DashboardHelpStyle = lipgloss.NewStyle().
 				Faint(true).
 				Foreground(mutedColor)

@@ -37,7 +37,7 @@ func (m Model) View() string {
 		sections = append(sections, "", m.forecastTable(width))
 	}
 
-	sections = append(sections, "", ui.DashboardHelpStyle.Width(width).Render("s or / search Surfline • q quit"))
+	sections = append(sections, "", ui.DashboardHelpStyle.Width(width).Render("j/k select • Esc unselect • s or / search Surfline • q quit"))
 	content := lipgloss.JoinVertical(lipgloss.Left, sections...)
 	if m.terminalWidth <= 0 {
 		return content
@@ -62,8 +62,8 @@ func (m Model) forecastTable(width int) string {
 	}
 	rows := []string{" " + strings.Join(headerCells, " ") + " "}
 
-	for _, spot := range m.spots {
-		rows = append(rows, "", m.spotCard(spot, slotWidth))
+	for index, spot := range m.spots {
+		rows = append(rows, "", m.spotCard(spot, slotWidth, index == m.selectedIndex))
 	}
 	table := strings.Join(rows, "\n")
 	return lipgloss.NewStyle().Width(width).Align(lipgloss.Center).Render(
@@ -71,22 +71,22 @@ func (m Model) forecastTable(width int) string {
 	)
 }
 
-func (m Model) spotCard(spot surf.Spot, slotWidth int) string {
+func (m Model) spotCard(spot surf.Spot, slotWidth int, selected bool) string {
 	state := m.forecasts[spot.ID]
 	innerWidth := slotWidth*len(dashboardHours) + len(dashboardHours) - 1
 	name := ui.DashboardSpotStyle.Width(innerWidth).MaxWidth(innerWidth).Align(lipgloss.Center).Render(spot.Name)
 
 	if state.loading {
-		return statusCard(name, ui.Muted("Loading today's forecast…"), innerWidth)
+		return statusCard(name, ui.Muted("Loading today's forecast…"), innerWidth, selected)
 	}
 	if state.err != nil {
-		return statusCard(name, ui.Error("Forecast unavailable: "+state.err.Error()), innerWidth)
+		return statusCard(name, ui.Error("Forecast unavailable: "+state.err.Error()), innerWidth, selected)
 	}
 
 	now := m.now()
 	slots := slotsByHour(state.forecast, now)
 	if len(slots) == 0 {
-		return statusCard(name, ui.Muted("No forecast available for today."), innerWidth)
+		return statusCard(name, ui.Muted("No forecast available for today."), innerWidth, selected)
 	}
 
 	ratings := make([]string, 0, len(dashboardHours))
@@ -107,55 +107,72 @@ func (m Model) spotCard(spot surf.Spot, slotWidth int) string {
 	}
 
 	return strings.Join([]string{
-		solidBorder("╭", "╮", innerWidth),
-		borderedLine(name),
-		segmentedBorder("├", "┬", "┤", slotWidth, currentIndex),
-		segmentedLine(ratings, currentIndex),
-		segmentedLine(heights, currentIndex),
-		segmentedBorder("╰", "┴", "╯", slotWidth, currentIndex),
+		solidBorder("╭", "╮", innerWidth, selected),
+		borderedLine(name, selected),
+		segmentedBorder("├", "┬", "┤", slotWidth, currentIndex, selected),
+		segmentedLine(ratings, currentIndex, selected),
+		segmentedLine(heights, currentIndex, selected),
+		segmentedBorder("╰", "┴", "╯", slotWidth, currentIndex, selected),
 	}, "\n")
 }
 
-func statusCard(name, status string, innerWidth int) string {
+func statusCard(name, status string, innerWidth int, selected bool) string {
 	centeredStatus := lipgloss.NewStyle().Width(innerWidth).MaxWidth(innerWidth).Align(lipgloss.Center).Render(status)
 	return strings.Join([]string{
-		solidBorder("╭", "╮", innerWidth),
-		borderedLine(name),
-		solidBorder("├", "┤", innerWidth),
-		borderedLine(centeredStatus),
-		solidBorder("╰", "╯", innerWidth),
+		solidBorder("╭", "╮", innerWidth, selected),
+		borderedLine(name, selected),
+		solidBorder("├", "┤", innerWidth, selected),
+		borderedLine(centeredStatus, selected),
+		solidBorder("╰", "╯", innerWidth, selected),
 	}, "\n")
 }
 
-func borderedLine(content string) string {
-	return border("│") + content + border("│")
+func borderedLine(content string, selected bool) string {
+	return outerBorder("│", selected) + content + outerBorder("│", selected)
 }
 
-func segmentedLine(cells []string, currentIndex int) string {
+func segmentedLine(cells []string, currentIndex int, selected bool) string {
 	var line strings.Builder
 	for boundary, cell := range cells {
-		line.WriteString(cellBorder("│", boundary, currentIndex))
+		line.WriteString(gridBorder("│", boundary, currentIndex, selected))
 		line.WriteString(cell)
 	}
-	line.WriteString(cellBorder("│", len(cells), currentIndex))
+	line.WriteString(gridBorder("│", len(cells), currentIndex, selected))
 	return line.String()
 }
 
-func segmentedBorder(left, divider, right string, slotWidth, currentIndex int) string {
+func segmentedBorder(left, divider, right string, slotWidth, currentIndex int, selected bool) string {
+	if selected {
+		var outline strings.Builder
+		for index := range dashboardHours {
+			if index == 0 {
+				outline.WriteString(left)
+			} else {
+				outline.WriteString(divider)
+			}
+			outline.WriteString(strings.Repeat("─", slotWidth))
+		}
+		outline.WriteString(right)
+		return ui.DashboardSelectedBorderStyle.Render(outline.String())
+	}
+
 	var line strings.Builder
 	for index := range dashboardHours {
 		junction := divider
 		if index == 0 {
 			junction = left
 		}
-		line.WriteString(cellBorder(junction, index, currentIndex))
+		line.WriteString(gridBorder(junction, index, currentIndex, false))
 		line.WriteString(borderSegment(strings.Repeat("─", slotWidth), index == currentIndex))
 	}
-	line.WriteString(cellBorder(right, len(dashboardHours), currentIndex))
+	line.WriteString(gridBorder(right, len(dashboardHours), currentIndex, false))
 	return line.String()
 }
 
-func solidBorder(left, right string, innerWidth int) string {
+func solidBorder(left, right string, innerWidth int, selected bool) string {
+	if selected {
+		return ui.DashboardSelectedBorderStyle.Render(left + strings.Repeat("─", innerWidth) + right)
+	}
 	return border(left + strings.Repeat("─", innerWidth) + right)
 }
 
@@ -163,7 +180,17 @@ func border(value string) string {
 	return ui.DashboardBorderStyle.Render(value)
 }
 
-func cellBorder(value string, boundary, currentIndex int) string {
+func outerBorder(value string, selected bool) string {
+	if selected {
+		return ui.DashboardSelectedBorderStyle.Render(value)
+	}
+	return border(value)
+}
+
+func gridBorder(value string, boundary, currentIndex int, selected bool) string {
+	if selected {
+		return ui.DashboardSelectedBorderStyle.Render(value)
+	}
 	return borderSegment(value, currentIndex >= 0 && (boundary == currentIndex || boundary == currentIndex+1))
 }
 

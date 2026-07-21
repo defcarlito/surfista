@@ -25,6 +25,7 @@ type Model struct {
 	provider      surf.ForecastProvider
 	loadErr       error
 	terminalWidth int
+	selectedIndex int
 	now           func() time.Time
 }
 
@@ -34,11 +35,12 @@ func New(provider surf.ForecastProvider, spots []surf.Spot, loadErr error) Model
 		states[spot.ID] = forecastState{loading: provider != nil}
 	}
 	return Model{
-		spots:     append([]surf.Spot(nil), spots...),
-		forecasts: states,
-		provider:  provider,
-		loadErr:   loadErr,
-		now:       time.Now,
+		spots:         append([]surf.Spot(nil), spots...),
+		forecasts:     states,
+		provider:      provider,
+		loadErr:       loadErr,
+		selectedIndex: -1,
+		now:           time.Now,
 	}
 }
 

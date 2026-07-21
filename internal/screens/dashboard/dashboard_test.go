@@ -226,3 +226,104 @@ func TestAddStartsForecastForNewFavorite(t *testing.T) {
 		t.Fatalf("dashboard state = %+v", model)
 	}
 }
+
+func TestLocationSelectionStartsEmptyAndMovesWithJK(t *testing.T) {
+	t.Parallel()
+
+	model := New(nil, []surf.Spot{
+		{ID: "first", Name: "First"},
+		{ID: "second", Name: "Second"},
+		{ID: "third", Name: "Third"},
+	}, nil)
+	if model.selectedIndex != -1 {
+		t.Fatalf("initial selection = %d, want -1", model.selectedIndex)
+	}
+
+	model, _ = model.Update(dashboardKey('j'))
+	if model.selectedIndex != 0 {
+		t.Fatalf("selection after first j = %d, want 0", model.selectedIndex)
+	}
+	model, _ = model.Update(dashboardKey('j'))
+	if model.selectedIndex != 1 {
+		t.Fatalf("selection after second j = %d, want 1", model.selectedIndex)
+	}
+	model, _ = model.Update(dashboardKey('k'))
+	if model.selectedIndex != 0 {
+		t.Fatalf("selection after k = %d, want 0", model.selectedIndex)
+	}
+	model, _ = model.Update(dashboardKey('k'))
+	if model.selectedIndex != 0 {
+		t.Fatalf("selection moved above first location: %d", model.selectedIndex)
+	}
+
+	model, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
+	if model.selectedIndex != -1 {
+		t.Fatalf("selection after Esc = %d, want -1", model.selectedIndex)
+	}
+	model, _ = model.Update(dashboardKey('k'))
+	if model.selectedIndex != 2 {
+		t.Fatalf("selection after k from empty = %d, want last location", model.selectedIndex)
+	}
+}
+
+func TestSelectedLocationUsesWhiteBordersThroughout(t *testing.T) {
+	t.Parallel()
+
+	spot := surf.Spot{ID: "honolua", Name: "Honolua Bay"}
+	model := New(nil, []surf.Spot{spot}, nil)
+	card := model.spotCard(spot, 7, true)
+	lines := strings.Split(card, "\n")
+	innerWidth := 7*len(dashboardHours) + len(dashboardHours) - 1
+
+	wantTop := ui.DashboardSelectedBorderStyle.Render("╭" + strings.Repeat("─", innerWidth) + "╮")
+	wantBottom := ui.DashboardSelectedBorderStyle.Render("╰" + strings.Repeat("─", innerWidth) + "╯")
+	if lines[0] != wantTop {
+		t.Fatalf("selected top border was not white:\n%s", card)
+	}
+	if lines[len(lines)-1] != wantBottom {
+		t.Fatalf("selected bottom border was not white:\n%s", card)
+	}
+	wantDivider := ui.DashboardSelectedBorderStyle.Render(ansi.Strip(lines[2]))
+	if lines[2] != wantDivider {
+		t.Fatalf("selected internal divider was not white:\n%s", card)
+	}
+	for _, line := range lines[1 : len(lines)-1] {
+		plain := ansi.Strip(line)
+		if line == ui.DashboardSelectedBorderStyle.Render(plain) {
+			continue
+		}
+		plainLine := []rune(plain)
+		leftEdge := ui.DashboardSelectedBorderStyle.Render(string(plainLine[0]))
+		rightEdge := ui.DashboardSelectedBorderStyle.Render(string(plainLine[len(plainLine)-1]))
+		if !strings.HasPrefix(line, leftEdge) || !strings.HasSuffix(line, rightEdge) {
+			t.Fatalf("selected row does not have two white outer edges: %q", line)
+		}
+	}
+
+	var bottom strings.Builder
+	for index := range dashboardHours {
+		if index == 0 {
+			bottom.WriteString("╰")
+		} else {
+			bottom.WriteString("┴")
+		}
+		bottom.WriteString(strings.Repeat("─", 7))
+	}
+	bottom.WriteString("╯")
+	wantSegmentedBorder := ui.DashboardSelectedBorderStyle.Render(bottom.String())
+	if got := segmentedBorder("╰", "┴", "╯", 7, -1, true); got != wantSegmentedBorder {
+		t.Fatalf("selected forecast grid border was not entirely white: %q", got)
+	}
+
+	cells := []string{"rating", "height"}
+	wantGridLine := ui.DashboardSelectedBorderStyle.Render("│") + cells[0] +
+		ui.DashboardSelectedBorderStyle.Render("│") + cells[1] +
+		ui.DashboardSelectedBorderStyle.Render("│")
+	if got := segmentedLine(cells, -1, true); got != wantGridLine {
+		t.Fatalf("selected forecast grid cells were not outlined in white: %q", got)
+	}
+}
+
+func dashboardKey(code rune) tea.KeyPressMsg {
+	return tea.KeyPressMsg{Code: code, Text: string(code)}
+}

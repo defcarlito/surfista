@@ -77,6 +77,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading, cmd = m.loading.Update(msg)
 		return m, cmd
 	}
+	if m.current == homeScreen {
+		var cmd tea.Cmd
+		m.dashboard, cmd = m.dashboard.Update(msg)
+		return m, cmd
+	}
 
 	return m, nil
 }
