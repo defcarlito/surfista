@@ -1,6 +1,7 @@
 package app
 
 import (
+	"surfista/internal/screens/dashboard"
 	"surfista/internal/screens/search"
 	"surfista/internal/surf"
 )
@@ -13,17 +14,15 @@ const (
 )
 
 type Model struct {
-	current screen
-	search  search.Model
-	tracked []surf.Spot
-	loadErr error
+	current   screen
+	search    search.Model
+	dashboard dashboard.Model
 }
 
-func New(searcher surf.SpotSearcher, tracker search.Tracker, tracked []surf.Spot, loadErr error) Model {
+func New(searcher surf.SpotSearcher, tracker search.Tracker, forecaster surf.ForecastProvider, tracked []surf.Spot, loadErr error) Model {
 	return Model{
-		current: homeScreen,
-		search:  search.New(searcher, tracker),
-		tracked: tracked,
-		loadErr: loadErr,
+		current:   homeScreen,
+		search:    search.New(searcher, tracker),
+		dashboard: dashboard.New(forecaster, tracked, loadErr),
 	}
 }

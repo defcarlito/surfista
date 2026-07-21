@@ -3,18 +3,25 @@ package app
 import (
 	tea "charm.land/bubbletea/v2"
 
+	"surfista/internal/screens/dashboard"
 	"surfista/internal/screens/search"
 )
 
 func (m Model) Init() tea.Cmd {
-	return nil
+	return m.dashboard.Init()
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if _, ok := msg.(tea.WindowSizeMsg); ok {
-		var cmd tea.Cmd
-		m.search, cmd = m.search.Update(msg)
-		return m, cmd
+		var searchCmd, dashboardCmd tea.Cmd
+		m.search, searchCmd = m.search.Update(msg)
+		m.dashboard, dashboardCmd = m.dashboard.Update(msg)
+		return m, tea.Batch(searchCmd, dashboardCmd)
+	}
+
+	if _, ok := msg.(dashboard.ForecastLoadedMsg); ok {
+		m.dashboard, _ = m.dashboard.Update(msg)
+		return m, nil
 	}
 
 	if key, ok := msg.(tea.KeyPressMsg); ok {
@@ -40,7 +47,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	if added, ok := msg.(search.SpotAddedMsg); ok && added.Err == nil && added.Added {
-		m.tracked = append(m.tracked, added.Spot)
+		cmd := m.dashboard.Add(added.Spot)
+		if m.current == searchScreen {
+			var searchCmd tea.Cmd
+			m.search, searchCmd = m.search.Update(msg)
+			return m, tea.Batch(cmd, searchCmd)
+		}
+		return m, cmd
 	}
 
 	if m.current == searchScreen {

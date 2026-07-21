@@ -14,9 +14,9 @@ type Spot struct {
 	Longitude float64 `json:"longitude"`
 }
 
-// Forecast is one local calendar day's three-hour surf outlook for a spot.
-// UTCOffset is kept separately because the terminal may be running in a
-// different timezone from the surf spot.
+// Forecast is a three-hour surf outlook for a spot. UTCOffset is kept
+// separately because the terminal may be running in a different timezone
+// from the surf spot.
 type Forecast struct {
 	SpotID    string
 	UTCOffset time.Duration

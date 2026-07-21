@@ -67,7 +67,7 @@ func TestSurflineForecastMergesWaveAndRatingSlots(t *testing.T) {
 	}
 	for path, request := range seen {
 		query := request.URL.Query()
-		if query.Get("spotId") != "honolua-id" || query.Get("days") != "1" || query.Get("intervalHours") != "3" {
+		if query.Get("spotId") != "honolua-id" || query.Get("days") != "2" || query.Get("intervalHours") != "3" {
 			t.Errorf("%s query = %v", path, query)
 		}
 		if request.Header.Get("Accept") != "application/json" {

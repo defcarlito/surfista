@@ -80,6 +80,38 @@ var (
 
 	SearchEmptyStyle = lipgloss.NewStyle().
 				Foreground(mutedColor)
+
+	DashboardTitleStyle = lipgloss.NewStyle().
+				Bold(true).
+				Align(lipgloss.Center)
+
+	DashboardSubtitleStyle = lipgloss.NewStyle().
+				Foreground(mutedColor).
+				Align(lipgloss.Center)
+
+	DashboardSpotStyle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(primaryColor)
+
+	DashboardSlotStyle = lipgloss.NewStyle().
+				Align(lipgloss.Center)
+
+	DashboardCurrentSlotStyle = lipgloss.NewStyle().
+					Bold(true).
+					Foreground(OceanPalette.Depth).
+					Background(OceanPalette.Foam).
+					Align(lipgloss.Center)
+
+	DashboardBorderStyle = lipgloss.NewStyle().
+				Foreground(borderColor)
+
+	DashboardHelpStyle = lipgloss.NewStyle().
+				Faint(true).
+				Foreground(mutedColor)
+
+	DashboardEmptyStyle = lipgloss.NewStyle().
+				Foreground(mutedColor).
+				Align(lipgloss.Center)
 )
 
 func Title(value string) string   { return TitleStyle.Render(GradientText(value)) }

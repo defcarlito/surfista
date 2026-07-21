@@ -24,7 +24,7 @@ func (resizeTestTracker) Add(surf.Spot) (bool, error) {
 func TestWindowSizeReachesSearchBeforeScreenOpens(t *testing.T) {
 	t.Parallel()
 
-	model := New(resizeTestSearcher{}, resizeTestTracker{}, nil, nil)
+	model := New(resizeTestSearcher{}, resizeTestTracker{}, nil, nil, nil)
 	updatedModel, _ := model.Update(tea.WindowSizeMsg{Width: 34, Height: 20})
 	updated := updatedModel.(Model)
 

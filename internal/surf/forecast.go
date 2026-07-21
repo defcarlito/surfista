@@ -150,7 +150,9 @@ func (p *SurflineForecastProvider) getForecast(ctx context.Context, kind, spotID
 	endpoint.Path = strings.TrimRight(endpoint.Path, "/") + "/kbyg/spots/forecasts/" + kind
 	params := endpoint.Query()
 	params.Set("spotId", spotID)
-	params.Set("days", "1")
+	// Surfline's one-day response ends at 9pm. Request the following day so
+	// the dashboard can include the next-midnight boundary, then filter there.
+	params.Set("days", "2")
 	params.Set("intervalHours", "3")
 	if kind == "wave" {
 		params.Set("maxHeights", "false")
