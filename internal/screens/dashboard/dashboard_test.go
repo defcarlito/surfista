@@ -273,25 +273,27 @@ func TestViewShowsTodayThroughNextMidnight(t *testing.T) {
 	}
 }
 
-func TestDashboardHeaderCentersTitleAndRightAlignsDate(t *testing.T) {
+func TestDashboardStartsWithForecastHours(t *testing.T) {
 	t.Parallel()
 
 	const width = 80
-	const title = "Today's surf conditions"
 	model := New(nil, nil, nil, nil)
 	model.now = func() time.Time {
-		return time.Date(2026, time.July, 22, 12, 0, 0, 0, time.Local)
+		return time.Date(2026, time.July, 22, 15, 0, 0, 0, time.Local)
 	}
 
-	line := ansi.Strip(model.dashboardTitleLine(width))
-	if !strings.HasPrefix(line, "Surfista") {
-		t.Fatalf("gradient brand is not aligned to the left edge: %q", line)
+	header := ansi.Strip(model.dashboardHeader(width))
+	lines := strings.Split(header, "\n")
+	if !strings.Contains(lines[0], "12a") || !strings.Contains(lines[0], "3a") {
+		t.Fatalf("forecast hours are not on the first line: %q", lines[0])
 	}
-	if titleStart := strings.Index(line, title); titleStart != (width-len(title))/2 {
-		t.Fatalf("title starts at %d, want %d: %q", titleStart, (width-len(title))/2, line)
+	if !strings.Contains(lines[1], "now") {
+		t.Fatalf("current-time label is not below the forecast hours: %q", lines[1])
 	}
-	if !strings.HasSuffix(line, "7/22") {
-		t.Fatalf("date is not aligned to the right edge: %q", line)
+	for _, removed := range []string{"Surfista", "Today's surf conditions", "7/22"} {
+		if strings.Contains(header, removed) {
+			t.Fatalf("dashboard header still contains removed top-bar text %q:\n%s", removed, header)
+		}
 	}
 }
 
@@ -537,17 +539,14 @@ func TestLocationViewportScrollsWhileHeaderAndControlsStayPinned(t *testing.T) {
 	if len(lines) != 24 {
 		t.Fatalf("view height = %d, want terminal height 24:\n%s", len(lines), plain)
 	}
-	if !strings.Contains(lines[0], "Today's surf conditions") {
-		t.Fatalf("title is not pinned to the first line: %q", lines[0])
+	if !strings.Contains(lines[0], "12a") || !strings.Contains(lines[0], "3a") {
+		t.Fatalf("time header is not pinned to the first line: %q", lines[0])
 	}
-	if !strings.Contains(lines[2], "12a") || !strings.Contains(lines[2], "3a") {
-		t.Fatalf("time header is not pinned near the top: %q", lines[2])
+	if !strings.Contains(lines[1], "now") {
+		t.Fatalf("current-time label is not directly below the time header: %q", lines[1])
 	}
-	if !strings.Contains(lines[3], "now") {
-		t.Fatalf("current-time label is not directly below the time header: %q", lines[3])
-	}
-	if strings.TrimSpace(lines[4]) != "" {
-		t.Fatalf("expected one blank row between the current-time label and top arrow slot: %q", lines[4])
+	if strings.TrimSpace(lines[2]) != "" {
+		t.Fatalf("expected one blank row between the current-time label and top arrow slot: %q", lines[2])
 	}
 	if !strings.Contains(lines[len(lines)-2], "↑/k ↓/j navigate") || strings.TrimSpace(lines[len(lines)-1]) != "" {
 		t.Fatalf("controls are not one row above the bottom: %q / %q", lines[len(lines)-2], lines[len(lines)-1])
@@ -589,8 +588,8 @@ func TestLocationViewportScrollsWhileHeaderAndControlsStayPinned(t *testing.T) {
 	if strings.Contains(plain, "First Location") || strings.Contains(plain, "Fourth Location") {
 		t.Fatalf("scrolled viewport shows a location outside its window:\n%s", plain)
 	}
-	if arrowLine := standaloneIndicatorLine(lines, "↑"); arrowLine != 5 {
-		t.Fatalf("up arrow line = %d, want below the time-header gap at 5:\n%s", arrowLine, plain)
+	if arrowLine := standaloneIndicatorLine(lines, "↑"); arrowLine != 3 {
+		t.Fatalf("up arrow line = %d, want below the time-header gap at 3:\n%s", arrowLine, plain)
 	}
 	upLine := standaloneIndicatorLine(lines, "↑")
 	downLine := standaloneIndicatorLine(lines, "↓")
@@ -605,7 +604,7 @@ func TestLocationViewportScrollsWhileHeaderAndControlsStayPinned(t *testing.T) {
 	if firstCardLine != initialFirstCardLine {
 		t.Fatalf("cards shifted when the top arrow appeared: initial row=%d scrolled row=%d\n%s", initialFirstCardLine, firstCardLine, plain)
 	}
-	if !strings.Contains(lines[0], "Today's surf conditions") || !strings.Contains(lines[2], "12a") ||
+	if !strings.Contains(lines[0], "12a") ||
 		!strings.Contains(lines[len(lines)-2], "↑/k ↓/j navigate") || strings.TrimSpace(lines[len(lines)-1]) != "" {
 		t.Fatalf("fixed regions moved after scrolling:\n%s", plain)
 	}
@@ -657,8 +656,8 @@ func TestLocationViewportReflowsAroundSelectionAfterResize(t *testing.T) {
 	if model.scrollOffset == 0 || !strings.Contains(plain, "Third Location") {
 		t.Fatalf("resize did not scroll the selected third location into view: offset=%d\n%s", model.scrollOffset, plain)
 	}
-	if !strings.Contains(lines[0], "Today's surf conditions") || !strings.Contains(lines[1], "12a") {
-		t.Fatalf("compact layout did not keep title and time at the top:\n%s", plain)
+	if !strings.Contains(lines[0], "12a") || !strings.Contains(lines[1], "now") {
+		t.Fatalf("compact layout did not keep forecast time at the top:\n%s", plain)
 	}
 	if !strings.Contains(lines[len(lines)-2], "↑/k ↓/j navigate") || strings.TrimSpace(lines[len(lines)-1]) != "" {
 		t.Fatalf("compact layout did not keep controls at the bottom:\n%s", plain)
@@ -804,7 +803,7 @@ func TestRemoveConfirmationCanBeCancelled(t *testing.T) {
 	}
 	model, _ = model.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	plain := ansi.Strip(model.View())
-	for _, want := range []string{"Today's surf conditions", "Remove Honolua Bay from tracked locations?", "enter remove", "esc cancel"} {
+	for _, want := range []string{"Remove Honolua Bay from tracked locations?", "enter remove", "esc cancel"} {
 		if !strings.Contains(plain, want) {
 			t.Fatalf("confirmation view does not contain %q:\n%s", want, plain)
 		}
