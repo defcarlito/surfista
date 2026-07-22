@@ -419,7 +419,15 @@ func tidePosition(points []surf.TidePoint, at time.Time) (previousEvent, nextEve
 
 func formatTideEvent(point surf.TidePoint, offset time.Duration, unit string) string {
 	local := point.Timestamp.UTC().Add(offset)
-	return fmt.Sprintf("%s %s %s%s", strings.ToLower(point.Type), local.Format("3:04pm"), formatDetailNumber(point.Height), unit)
+	timeLabel := strings.TrimSuffix(local.Format("3:04pm"), "m")
+	eventLabel := strings.ToLower(point.Type)
+	switch point.Type {
+	case "LOW":
+		eventLabel = "l"
+	case "HIGH":
+		eventLabel = "h"
+	}
+	return fmt.Sprintf("%s %s %s%s", eventLabel, timeLabel, formatDetailNumber(point.Height), unit)
 }
 
 func temperatureDetailLines(slot surf.ForecastDetailSlot, available, loading bool, units surf.ForecastUnits) []string {
