@@ -272,7 +272,7 @@ func TestDashboardHelpShowsOnlyAvailableActions(t *testing.T) {
 	model := New(nil, nil, []surf.Spot{{ID: "honolua", Name: "Honolua Bay"}}, nil)
 	model, _ = model.Update(tea.WindowSizeMsg{Width: 80, Height: 20})
 	plain := ansi.Strip(model.View())
-	for _, want := range []string{"j/k select", "s or / search Surfline", "q quit"} {
+	for _, want := range []string{"↑/k ↓/j navigate", "s or / search Surfline", "q quit"} {
 		if !strings.Contains(plain, want) {
 			t.Fatalf("unselected dashboard help does not contain %q:\n%s", want, plain)
 		}
@@ -285,7 +285,7 @@ func TestDashboardHelpShowsOnlyAvailableActions(t *testing.T) {
 
 	model, _ = model.Update(dashboardKey('j'))
 	plain = ansi.Strip(model.View())
-	for _, want := range []string{"j/k select", "x remove", "Esc unselect", "q quit"} {
+	for _, want := range []string{"↑/k ↓/j navigate", "x remove", "Esc unselect", "q quit"} {
 		if !strings.Contains(plain, want) {
 			t.Fatalf("selected dashboard help does not contain %q:\n%s", want, plain)
 		}
@@ -326,21 +326,24 @@ func TestLocationViewportScrollsWhileHeaderAndControlsStayPinned(t *testing.T) {
 	if strings.TrimSpace(lines[3]) != "" {
 		t.Fatalf("expected one blank row between the times and top arrow slot: %q", lines[3])
 	}
-	if !strings.Contains(lines[len(lines)-2], "j/k select") || strings.TrimSpace(lines[len(lines)-1]) != "" {
+	if !strings.Contains(lines[len(lines)-2], "↑/k ↓/j navigate") || strings.TrimSpace(lines[len(lines)-1]) != "" {
 		t.Fatalf("controls are not one row above the bottom: %q / %q", lines[len(lines)-2], lines[len(lines)-1])
 	}
-	for _, want := range []string{"First Location", "Second Location", "↓"} {
+	for _, want := range []string{"First Location", "Second Location"} {
 		if !strings.Contains(plain, want) {
 			t.Fatalf("initial viewport does not contain %q:\n%s", want, plain)
 		}
 	}
-	for _, hidden := range []string{"Third Location", "Fourth Location", "↑"} {
+	for _, hidden := range []string{"Third Location", "Fourth Location"} {
 		if strings.Contains(plain, hidden) {
 			t.Fatalf("initial viewport unexpectedly contains %q:\n%s", hidden, plain)
 		}
 	}
-	if arrowLine := lineContaining(lines, "↓"); arrowLine != len(lines)-4 {
+	if arrowLine := standaloneIndicatorLine(lines, "↓"); arrowLine != len(lines)-4 {
 		t.Fatalf("down arrow line = %d, want bottom of location viewport at %d:\n%s", arrowLine, len(lines)-4, plain)
+	}
+	if standaloneIndicatorLine(lines, "↑") >= 0 {
+		t.Fatalf("initial viewport unexpectedly contains an up indicator:\n%s", plain)
 	}
 	initialFirstCardLine := lineContaining(lines, "╭")
 
@@ -349,7 +352,7 @@ func TestLocationViewportScrollsWhileHeaderAndControlsStayPinned(t *testing.T) {
 	}
 	plain = ansi.Strip(model.View())
 	lines = strings.Split(plain, "\n")
-	for _, want := range []string{"Second Location", "Third Location", "↑", "↓"} {
+	for _, want := range []string{"Second Location", "Third Location"} {
 		if !strings.Contains(plain, want) {
 			t.Fatalf("scrolled viewport does not contain %q:\n%s", want, plain)
 		}
@@ -357,11 +360,14 @@ func TestLocationViewportScrollsWhileHeaderAndControlsStayPinned(t *testing.T) {
 	if strings.Contains(plain, "First Location") || strings.Contains(plain, "Fourth Location") {
 		t.Fatalf("scrolled viewport shows a location outside its window:\n%s", plain)
 	}
-	if arrowLine := lineContaining(lines, "↑"); arrowLine != 4 {
+	if arrowLine := standaloneIndicatorLine(lines, "↑"); arrowLine != 4 {
 		t.Fatalf("up arrow line = %d, want below the time-header gap at 4:\n%s", arrowLine, plain)
 	}
-	upLine := lineContaining(lines, "↑")
-	downLine := lineContaining(lines, "↓")
+	upLine := standaloneIndicatorLine(lines, "↑")
+	downLine := standaloneIndicatorLine(lines, "↓")
+	if downLine < 0 {
+		t.Fatalf("scrolled viewport does not contain a down indicator:\n%s", plain)
+	}
 	firstCardLine := lineContaining(lines, "╭")
 	lastCardLine := lastLineContaining(lines, "╯")
 	if aboveGap, belowGap := firstCardLine-upLine-1, downLine-lastCardLine-1; aboveGap != belowGap {
@@ -371,7 +377,7 @@ func TestLocationViewportScrollsWhileHeaderAndControlsStayPinned(t *testing.T) {
 		t.Fatalf("cards shifted when the top arrow appeared: initial row=%d scrolled row=%d\n%s", initialFirstCardLine, firstCardLine, plain)
 	}
 	if !strings.Contains(lines[0], "Today's surf conditions") || !strings.Contains(lines[2], "12a") ||
-		!strings.Contains(lines[len(lines)-2], "j/k select") || strings.TrimSpace(lines[len(lines)-1]) != "" {
+		!strings.Contains(lines[len(lines)-2], "↑/k ↓/j navigate") || strings.TrimSpace(lines[len(lines)-1]) != "" {
 		t.Fatalf("fixed regions moved after scrolling:\n%s", plain)
 	}
 
@@ -379,7 +385,7 @@ func TestLocationViewportScrollsWhileHeaderAndControlsStayPinned(t *testing.T) {
 	plain = ansi.Strip(model.View())
 	lines = strings.Split(plain, "\n")
 	if !strings.Contains(plain, "Third Location") || !strings.Contains(plain, "Fourth Location") ||
-		!strings.Contains(plain, "↑") || strings.Contains(plain, "↓") {
+		standaloneIndicatorLine(lines, "↑") < 0 || standaloneIndicatorLine(lines, "↓") >= 0 {
 		t.Fatalf("last viewport does not show the final locations and only the up arrow:\n%s", plain)
 	}
 	if finalFirstCardLine := lineContaining(lines, "╭"); finalFirstCardLine != initialFirstCardLine {
@@ -390,7 +396,8 @@ func TestLocationViewportScrollsWhileHeaderAndControlsStayPinned(t *testing.T) {
 		model, _ = model.Update(dashboardKey('k'))
 	}
 	plain = ansi.Strip(model.View())
-	if !strings.Contains(plain, "First Location") || strings.Contains(plain, "↑") || !strings.Contains(plain, "↓") {
+	lines = strings.Split(plain, "\n")
+	if !strings.Contains(plain, "First Location") || standaloneIndicatorLine(lines, "↑") >= 0 || standaloneIndicatorLine(lines, "↓") < 0 {
 		t.Fatalf("scrolling back up did not restore the first viewport:\n%s", plain)
 	}
 }
@@ -424,7 +431,7 @@ func TestLocationViewportReflowsAroundSelectionAfterResize(t *testing.T) {
 	if !strings.Contains(lines[0], "Today's surf conditions") || !strings.Contains(lines[1], "12a") {
 		t.Fatalf("compact layout did not keep title and time at the top:\n%s", plain)
 	}
-	if !strings.Contains(lines[len(lines)-2], "j/k select") || strings.TrimSpace(lines[len(lines)-1]) != "" {
+	if !strings.Contains(lines[len(lines)-2], "↑/k ↓/j navigate") || strings.TrimSpace(lines[len(lines)-1]) != "" {
 		t.Fatalf("compact layout did not keep controls at the bottom:\n%s", plain)
 	}
 }
@@ -432,6 +439,15 @@ func TestLocationViewportReflowsAroundSelectionAfterResize(t *testing.T) {
 func lineContaining(lines []string, value string) int {
 	for index, line := range lines {
 		if strings.Contains(line, value) {
+			return index
+		}
+	}
+	return -1
+}
+
+func standaloneIndicatorLine(lines []string, indicator string) int {
+	for index, line := range lines {
+		if strings.TrimSpace(line) == indicator {
 			return index
 		}
 	}
