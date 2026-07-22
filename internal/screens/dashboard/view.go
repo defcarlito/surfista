@@ -14,32 +14,32 @@ import (
 )
 
 const (
-	maxDashboardWidth  = 114
-	pageMargin         = 2
-	maxSlotWidth       = 10
-	gridBorderWidth    = 10
-	removalDialogWidth = 48
-	removalDialogFrame = 6
+	maxDashboardWidth       = 114
+	pageMargin              = 2
+	maxSlotWidth            = 10
+	gridBorderWidth         = 10
+	removalDialogWidth      = 48
+	removalDialogFrame      = 6
+	spaciousLayoutMinHeight = 12
 )
 
 var dashboardHours = [...]int{0, 3, 6, 9, 12, 15, 18, 21, 24}
 
 func (m Model) View() string {
 	width := m.contentWidth()
-	sections := []string{
-		ui.DashboardSubtitleStyle.Width(width).Render("Today's surf conditions"),
-	}
-
-	if m.loadErr != nil {
-		sections = append(sections, "", ui.ErrorStyle.Width(width).Render("Could not load favorite locations: "+m.loadErr.Error()))
-	}
-	if len(m.spots) == 0 {
-		sections = append(sections, "", ui.DashboardEmptyStyle.Width(width).Render("No favorite surf spots yet."))
+	header := m.dashboardHeader(width)
+	footer := m.dashboardFooter(width)
+	sections := []string{header}
+	if m.terminalHeight > 0 {
+		bodyHeight := max(0, m.terminalHeight-lipgloss.Height(header)-lipgloss.Height(footer))
+		if bodyHeight > 0 {
+			sections = append(sections, m.dashboardBody(width, bodyHeight))
+		}
+		sections = append(sections, footer)
 	} else {
-		sections = append(sections, "", m.forecastTable(width))
+		sections = append(sections, m.dashboardBody(width, 0), footer)
 	}
 
-	sections = append(sections, "", ui.DashboardHelpStyle.Width(width).Render("j/k select • x remove • Esc unselect • s or / search Surfline • q quit"))
 	content := lipgloss.JoinVertical(lipgloss.Left, sections...)
 	if m.terminalWidth > 0 {
 		content = lipgloss.PlaceHorizontal(m.terminalWidth, lipgloss.Center, content)
@@ -48,6 +48,228 @@ func (m Model) View() string {
 		return m.removalOverlay(content)
 	}
 	return content
+}
+
+func (m Model) dashboardHeader(width int) string {
+	sections := []string{
+		ui.DashboardSubtitleStyle.Width(width).Render("Today's surf conditions"),
+	}
+	if m.terminalHeight <= 0 || m.terminalHeight >= spaciousLayoutMinHeight {
+		sections = append(sections, "")
+	}
+	sections = append(sections, m.forecastHeader(width), "")
+	return lipgloss.JoinVertical(lipgloss.Left, sections...)
+}
+
+func (m Model) dashboardFooter(width int) string {
+	help := ui.DashboardHelpStyle.Width(width).Render("j/k select • x remove • Esc unselect • s or / search Surfline • q quit")
+	if m.terminalHeight > 0 && m.terminalHeight < spaciousLayoutMinHeight {
+		return lipgloss.JoinVertical(lipgloss.Left, help, "")
+	}
+	return lipgloss.JoinVertical(lipgloss.Left, "", help, "")
+}
+
+func (m Model) dashboardBody(width, height int) string {
+	sections := make([]string, 0, 3)
+	remainingHeight := height
+
+	if m.loadErr != nil {
+		loadError := ui.ErrorStyle.Width(width).Render("Could not load favorite locations: " + m.loadErr.Error())
+		sections = append(sections, loadError)
+		if height > 0 {
+			remainingHeight -= lipgloss.Height(loadError)
+		}
+		if len(m.spots) > 0 && (height <= 0 || remainingHeight > 0) {
+			sections = append(sections, "")
+			if height > 0 {
+				remainingHeight--
+			}
+		}
+	}
+
+	if len(m.spots) == 0 {
+		sections = append(sections, ui.DashboardEmptyStyle.Width(width).Render("No favorite surf spots yet."))
+	} else if height <= 0 {
+		sections = append(sections, m.allLocationCards(width))
+	} else if remainingHeight > 0 {
+		sections = append(sections, m.locationViewport(width, remainingHeight))
+	}
+
+	content := lipgloss.JoinVertical(lipgloss.Left, sections...)
+	if height > 0 {
+		return fitHeight(content, height)
+	}
+	return content
+}
+
+func (m Model) forecastHeader(width int) string {
+	slotWidth := dashboardSlotWidth(width)
+	headerCells := make([]string, 0, len(dashboardHours))
+	for _, hour := range dashboardHours {
+		headerCells = append(headerCells, tableCell(formatDashboardHour(hour), slotWidth))
+	}
+	header := " " + strings.Join(headerCells, " ") + " "
+	cardWidth := slotWidth*len(dashboardHours) + gridBorderWidth
+	return lipgloss.NewStyle().Width(width).Align(lipgloss.Center).Render(
+		lipgloss.NewStyle().Width(cardWidth).Render(header),
+	)
+}
+
+func dashboardSlotWidth(width int) int {
+	return max(1, min(maxSlotWidth, (width-gridBorderWidth)/len(dashboardHours)))
+}
+
+func (m Model) allLocationCards(width int) string {
+	slotWidth := dashboardSlotWidth(width)
+	cards := make([]string, 0, len(m.spots))
+	for index, spot := range m.spots {
+		cards = append(cards, m.spotCard(spot, slotWidth, index == m.selectedIndex))
+	}
+	return lipgloss.NewStyle().Width(width).Align(lipgloss.Center).Render(strings.Join(cards, "\n\n"))
+}
+
+type locationWindow struct {
+	start     int
+	end       int
+	showAbove bool
+	showBelow bool
+}
+
+func (m Model) locationWindowFor(width, height int) locationWindow {
+	start := min(max(0, m.scrollOffset), len(m.spots))
+	window := locationWindow{start: start, end: start}
+	window.showAbove = window.start > 0
+	if height <= 0 || window.start >= len(m.spots) {
+		return window
+	}
+
+	// Always reserve one row above and below the cards. Keeping these rows
+	// stable prevents the cards from moving when either arrow disappears.
+	available := height - 2
+	if available <= 0 {
+		window.showBelow = window.start < len(m.spots)
+		return window
+	}
+
+	slotWidth := dashboardSlotWidth(width)
+	used := 0
+	for index := window.start; index < len(m.spots); index++ {
+		separatorHeight := 0
+		if index > window.start {
+			separatorHeight = 1
+		}
+		cardHeight := lipgloss.Height(m.spotCard(m.spots[index], slotWidth, index == m.selectedIndex))
+		if used+separatorHeight+cardHeight > available {
+			if window.end == window.start {
+				window.end = index + 1
+			}
+			break
+		}
+		used += separatorHeight + cardHeight
+		window.end = index + 1
+	}
+	window.showBelow = window.end < len(m.spots)
+	return window
+}
+
+func (m Model) locationViewport(width, height int) string {
+	window := m.locationWindowFor(width, height)
+	lines := make([]string, 0, height)
+	topIndicator := ""
+	if window.showAbove {
+		topIndicator = ui.DashboardScrollIndicatorStyle.Width(width).Render("↑")
+	}
+	lines = append(lines, topIndicator)
+
+	cardLines := make([]string, 0, height)
+	if window.end > window.start {
+		slotWidth := dashboardSlotWidth(width)
+		cards := make([]string, 0, window.end-window.start)
+		for index := window.start; index < window.end; index++ {
+			cards = append(cards, m.spotCard(m.spots[index], slotWidth, index == m.selectedIndex))
+		}
+		cardsBlock := lipgloss.NewStyle().Width(width).Align(lipgloss.Center).Render(strings.Join(cards, "\n\n"))
+		cardLines = strings.Split(cardsBlock, "\n")
+	}
+
+	cardAreaHeight := max(0, height-2)
+	if len(cardLines) > cardAreaHeight {
+		cardLines = cardLines[:cardAreaHeight]
+	}
+	topPadding := max(0, (cardAreaHeight-len(cardLines))/2)
+	for range topPadding {
+		lines = append(lines, "")
+	}
+	lines = append(lines, cardLines...)
+	for len(lines) < height-1 {
+		lines = append(lines, "")
+	}
+	if height > 1 {
+		bottomIndicator := ""
+		if window.showBelow {
+			bottomIndicator = ui.DashboardScrollIndicatorStyle.Width(width).Render("↓")
+		}
+		lines = append(lines, bottomIndicator)
+	}
+	return fitHeight(strings.Join(lines, "\n"), height)
+}
+
+func fitHeight(content string, height int) string {
+	if height <= 0 {
+		return ""
+	}
+	lines := strings.Split(content, "\n")
+	if len(lines) > height {
+		lines = lines[:height]
+	}
+	for len(lines) < height {
+		lines = append(lines, "")
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (m Model) locationViewportHeight(width int) int {
+	if m.terminalHeight <= 0 {
+		return 0
+	}
+	height := m.terminalHeight - lipgloss.Height(m.dashboardHeader(width)) - lipgloss.Height(m.dashboardFooter(width))
+	if m.loadErr != nil {
+		loadError := ui.ErrorStyle.Width(width).Render("Could not load favorite locations: " + m.loadErr.Error())
+		height -= lipgloss.Height(loadError) + 1
+	}
+	return max(0, height)
+}
+
+func (m *Model) clampScrollOffset() {
+	if len(m.spots) == 0 {
+		m.scrollOffset = 0
+		return
+	}
+	m.scrollOffset = min(max(0, m.scrollOffset), len(m.spots)-1)
+}
+
+func (m *Model) ensureSelectedVisible() {
+	m.clampScrollOffset()
+	if m.selectedIndex < 0 || m.selectedIndex >= len(m.spots) || m.terminalHeight <= 0 {
+		return
+	}
+	if m.selectedIndex < m.scrollOffset {
+		m.scrollOffset = m.selectedIndex
+		return
+	}
+
+	width := m.contentWidth()
+	height := m.locationViewportHeight(width)
+	if height <= 0 {
+		return
+	}
+	for m.scrollOffset < m.selectedIndex {
+		window := m.locationWindowFor(width, height)
+		if m.selectedIndex < window.end {
+			return
+		}
+		m.scrollOffset++
+	}
 }
 
 func (m Model) removalOverlay(dashboard string) string {
@@ -108,22 +330,7 @@ func (m Model) contentWidth() int {
 }
 
 func (m Model) forecastTable(width int) string {
-	slotWidth := max(1, min(maxSlotWidth, (width-gridBorderWidth)/len(dashboardHours)))
-	cardWidth := slotWidth*len(dashboardHours) + gridBorderWidth
-
-	headerCells := make([]string, 0, len(dashboardHours))
-	for _, hour := range dashboardHours {
-		headerCells = append(headerCells, tableCell(formatDashboardHour(hour), slotWidth))
-	}
-	rows := []string{" " + strings.Join(headerCells, " ") + " "}
-
-	for index, spot := range m.spots {
-		rows = append(rows, "", m.spotCard(spot, slotWidth, index == m.selectedIndex))
-	}
-	table := strings.Join(rows, "\n")
-	return lipgloss.NewStyle().Width(width).Align(lipgloss.Center).Render(
-		lipgloss.NewStyle().Width(cardWidth).Render(table),
-	)
+	return lipgloss.JoinVertical(lipgloss.Left, m.forecastHeader(width), "", m.allLocationCards(width))
 }
 
 func (m Model) spotCard(spot surf.Spot, slotWidth int, selected bool) string {

@@ -33,6 +33,7 @@ type Model struct {
 	terminalWidth  int
 	terminalHeight int
 	selectedIndex  int
+	scrollOffset   int
 	confirmRemoval bool
 	removing       bool
 	removalSpot    surf.Spot
@@ -79,6 +80,7 @@ func (m *Model) removeSpot(spotID string) {
 	}
 	m.spots = kept
 	delete(m.forecasts, spotID)
+	m.clampScrollOffset()
 	m.selectedIndex = -1
 	m.confirmRemoval = false
 	m.removing = false

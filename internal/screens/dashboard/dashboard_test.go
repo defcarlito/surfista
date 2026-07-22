@@ -266,6 +266,152 @@ func TestLocationSelectionStartsEmptyAndMovesWithJK(t *testing.T) {
 	}
 }
 
+func TestLocationViewportScrollsWhileHeaderAndControlsStayPinned(t *testing.T) {
+	t.Parallel()
+
+	model := New(nil, nil, []surf.Spot{
+		{ID: "first", Name: "First Location"},
+		{ID: "second", Name: "Second Location"},
+		{ID: "third", Name: "Third Location"},
+		{ID: "fourth", Name: "Fourth Location"},
+	}, nil)
+	model, _ = model.Update(tea.WindowSizeMsg{Width: 80, Height: 22})
+
+	plain := ansi.Strip(model.View())
+	lines := strings.Split(plain, "\n")
+	if len(lines) != 22 {
+		t.Fatalf("view height = %d, want terminal height 22:\n%s", len(lines), plain)
+	}
+	if !strings.Contains(lines[0], "Today's surf conditions") {
+		t.Fatalf("title is not pinned to the first line: %q", lines[0])
+	}
+	if !strings.Contains(lines[2], "12a") || !strings.Contains(lines[2], "3a") {
+		t.Fatalf("time header is not pinned near the top: %q", lines[2])
+	}
+	if strings.TrimSpace(lines[3]) != "" {
+		t.Fatalf("expected one blank row between the times and top arrow slot: %q", lines[3])
+	}
+	if !strings.Contains(lines[len(lines)-2], "j/k select") || strings.TrimSpace(lines[len(lines)-1]) != "" {
+		t.Fatalf("controls are not one row above the bottom: %q / %q", lines[len(lines)-2], lines[len(lines)-1])
+	}
+	for _, want := range []string{"First Location", "Second Location", "↓"} {
+		if !strings.Contains(plain, want) {
+			t.Fatalf("initial viewport does not contain %q:\n%s", want, plain)
+		}
+	}
+	for _, hidden := range []string{"Third Location", "Fourth Location", "↑"} {
+		if strings.Contains(plain, hidden) {
+			t.Fatalf("initial viewport unexpectedly contains %q:\n%s", hidden, plain)
+		}
+	}
+	if arrowLine := lineContaining(lines, "↓"); arrowLine != len(lines)-4 {
+		t.Fatalf("down arrow line = %d, want bottom of location viewport at %d:\n%s", arrowLine, len(lines)-4, plain)
+	}
+	initialFirstCardLine := lineContaining(lines, "╭")
+
+	for range 3 {
+		model, _ = model.Update(dashboardKey('j'))
+	}
+	plain = ansi.Strip(model.View())
+	lines = strings.Split(plain, "\n")
+	for _, want := range []string{"Second Location", "Third Location", "↑", "↓"} {
+		if !strings.Contains(plain, want) {
+			t.Fatalf("scrolled viewport does not contain %q:\n%s", want, plain)
+		}
+	}
+	if strings.Contains(plain, "First Location") || strings.Contains(plain, "Fourth Location") {
+		t.Fatalf("scrolled viewport shows a location outside its window:\n%s", plain)
+	}
+	if arrowLine := lineContaining(lines, "↑"); arrowLine != 4 {
+		t.Fatalf("up arrow line = %d, want below the time-header gap at 4:\n%s", arrowLine, plain)
+	}
+	upLine := lineContaining(lines, "↑")
+	downLine := lineContaining(lines, "↓")
+	firstCardLine := lineContaining(lines, "╭")
+	lastCardLine := lastLineContaining(lines, "╯")
+	if aboveGap, belowGap := firstCardLine-upLine-1, downLine-lastCardLine-1; aboveGap != belowGap {
+		t.Fatalf("location cards are not vertically centered between arrows: above=%d below=%d\n%s", aboveGap, belowGap, plain)
+	}
+	if firstCardLine != initialFirstCardLine {
+		t.Fatalf("cards shifted when the top arrow appeared: initial row=%d scrolled row=%d\n%s", initialFirstCardLine, firstCardLine, plain)
+	}
+	if !strings.Contains(lines[0], "Today's surf conditions") || !strings.Contains(lines[2], "12a") ||
+		!strings.Contains(lines[len(lines)-2], "j/k select") || strings.TrimSpace(lines[len(lines)-1]) != "" {
+		t.Fatalf("fixed regions moved after scrolling:\n%s", plain)
+	}
+
+	model, _ = model.Update(dashboardKey('j'))
+	plain = ansi.Strip(model.View())
+	lines = strings.Split(plain, "\n")
+	if !strings.Contains(plain, "Third Location") || !strings.Contains(plain, "Fourth Location") ||
+		!strings.Contains(plain, "↑") || strings.Contains(plain, "↓") {
+		t.Fatalf("last viewport does not show the final locations and only the up arrow:\n%s", plain)
+	}
+	if finalFirstCardLine := lineContaining(lines, "╭"); finalFirstCardLine != initialFirstCardLine {
+		t.Fatalf("cards shifted when the bottom arrow disappeared: initial row=%d final row=%d\n%s", initialFirstCardLine, finalFirstCardLine, plain)
+	}
+
+	for range 3 {
+		model, _ = model.Update(dashboardKey('k'))
+	}
+	plain = ansi.Strip(model.View())
+	if !strings.Contains(plain, "First Location") || strings.Contains(plain, "↑") || !strings.Contains(plain, "↓") {
+		t.Fatalf("scrolling back up did not restore the first viewport:\n%s", plain)
+	}
+}
+
+func TestLocationViewportReflowsAroundSelectionAfterResize(t *testing.T) {
+	t.Parallel()
+
+	model := New(nil, nil, []surf.Spot{
+		{ID: "first", Name: "First Location"},
+		{ID: "second", Name: "Second Location"},
+		{ID: "third", Name: "Third Location"},
+		{ID: "fourth", Name: "Fourth Location"},
+	}, nil)
+	model, _ = model.Update(tea.WindowSizeMsg{Width: 80, Height: 40})
+	for range 3 {
+		model, _ = model.Update(dashboardKey('j'))
+	}
+	if model.selectedIndex != 2 || model.scrollOffset != 0 {
+		t.Fatalf("large viewport state = selection %d offset %d, want selection 2 offset 0", model.selectedIndex, model.scrollOffset)
+	}
+
+	model, _ = model.Update(tea.WindowSizeMsg{Width: 80, Height: 10})
+	plain := ansi.Strip(model.View())
+	lines := strings.Split(plain, "\n")
+	if len(lines) != 10 {
+		t.Fatalf("resized view height = %d, want 10:\n%s", len(lines), plain)
+	}
+	if model.scrollOffset == 0 || !strings.Contains(plain, "Third Location") {
+		t.Fatalf("resize did not scroll the selected third location into view: offset=%d\n%s", model.scrollOffset, plain)
+	}
+	if !strings.Contains(lines[0], "Today's surf conditions") || !strings.Contains(lines[1], "12a") {
+		t.Fatalf("compact layout did not keep title and time at the top:\n%s", plain)
+	}
+	if !strings.Contains(lines[len(lines)-2], "j/k select") || strings.TrimSpace(lines[len(lines)-1]) != "" {
+		t.Fatalf("compact layout did not keep controls at the bottom:\n%s", plain)
+	}
+}
+
+func lineContaining(lines []string, value string) int {
+	for index, line := range lines {
+		if strings.Contains(line, value) {
+			return index
+		}
+	}
+	return -1
+}
+
+func lastLineContaining(lines []string, value string) int {
+	for index := len(lines) - 1; index >= 0; index-- {
+		if strings.Contains(lines[index], value) {
+			return index
+		}
+	}
+	return -1
+}
+
 func TestSelectedLocationUsesWhiteBordersThroughout(t *testing.T) {
 	t.Parallel()
 

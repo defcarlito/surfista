@@ -11,6 +11,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.terminalWidth = msg.Width
 		m.terminalHeight = msg.Height
+		m.ensureSelectedVisible()
 	case ForecastLoadedMsg:
 		if _, tracked := m.forecasts[msg.SpotID]; !tracked {
 			return m, nil
@@ -19,6 +20,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			forecast: msg.Forecast,
 			err:      msg.Err,
 		}
+		m.ensureSelectedVisible()
 	case SpotRemovedMsg:
 		if !m.confirmRemoval || msg.SpotID != m.removalSpot.ID {
 			return m, nil
@@ -75,6 +77,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				m.removalErr = nil
 			}
 		}
+		m.ensureSelectedVisible()
 	}
 	return m, nil
 }
