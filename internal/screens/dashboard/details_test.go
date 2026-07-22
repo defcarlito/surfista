@@ -325,6 +325,37 @@ func TestDetailValuesRoundToTenthsAndDescriptionsWrap(t *testing.T) {
 	}
 }
 
+func TestSwellRowsAlignHeightPeriodAndDirectionColumns(t *testing.T) {
+	t.Parallel()
+
+	lines := swellRowLines(surf.ForecastSlot{Swells: []surf.Swell{
+		{Height: 2.6, Period: 15, Direction: 225},
+		{Height: 0.3, Period: 11, Direction: 270},
+		{Height: 1.5, Period: 12, Direction: 202.5},
+		{Height: 1.1, Period: 9, Direction: 270},
+	}}, 20)
+	if len(lines) != 4 {
+		t.Fatalf("swell rows = %d, want 4", len(lines))
+	}
+
+	wantWidth := ansi.StringWidth(lines[0])
+	wantHeightEnd := strings.Index(lines[0], "′")
+	wantPeriodEnd := strings.Index(lines[0], "s")
+	wantDirectionStart := strings.LastIndex(lines[0], "SW")
+	for index, line := range lines {
+		if ansi.StringWidth(line) != wantWidth {
+			t.Fatalf("swell row %d width = %d, want %d: %q", index, ansi.StringWidth(line), wantWidth, line)
+		}
+		if strings.Index(line, "′") != wantHeightEnd || strings.Index(line, "s") != wantPeriodEnd {
+			t.Fatalf("swell row %d numeric columns are not aligned: %q", index, line)
+		}
+		directionStart := strings.IndexAny(line, "NSEW")
+		if directionStart != wantDirectionStart {
+			t.Fatalf("swell row %d direction starts at %d, want %d: %q", index, directionStart, wantDirectionStart, line)
+		}
+	}
+}
+
 func TestCurrentTimeBackgroundMatchesForecastRowHeight(t *testing.T) {
 	t.Parallel()
 

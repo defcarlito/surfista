@@ -317,14 +317,33 @@ func swellRowLines(slot surf.ForecastSlot, width int) []string {
 	if len(slot.Swells) == 0 {
 		return []string{ui.Muted("unavailable")}
 	}
-	lines := make([]string, 0, min(len(slot.Swells), detailsCellContentHeight))
-	for _, swell := range slot.Swells[:min(len(slot.Swells), detailsCellContentHeight)] {
-		value := fmt.Sprintf("%s′ %ss %s",
-			formatDetailNumber(swell.Height),
-			formatDetailNumber(swell.Period),
-			compassDirection(swell.Direction),
-		)
-		lines = append(lines, ansi.Truncate(value, width, ""))
+
+	type swellValues struct {
+		height    string
+		period    string
+		direction string
+	}
+	visibleSwells := slot.Swells[:min(len(slot.Swells), detailsCellContentHeight)]
+	values := make([]swellValues, 0, len(visibleSwells))
+	heightWidth, periodWidth, directionWidth := 0, 0, 0
+	for _, swell := range visibleSwells {
+		value := swellValues{
+			height:    formatDetailNumber(swell.Height) + "′",
+			period:    formatDetailNumber(swell.Period) + "s",
+			direction: compassDirection(swell.Direction),
+		}
+		values = append(values, value)
+		heightWidth = max(heightWidth, ansi.StringWidth(value.height))
+		periodWidth = max(periodWidth, ansi.StringWidth(value.period))
+		directionWidth = max(directionWidth, ansi.StringWidth(value.direction))
+	}
+
+	lines := make([]string, 0, len(values))
+	for _, value := range values {
+		line := lipgloss.NewStyle().Width(heightWidth).Align(lipgloss.Right).Render(value.height) + " " +
+			lipgloss.NewStyle().Width(periodWidth).Align(lipgloss.Right).Render(value.period) + " " +
+			lipgloss.NewStyle().Width(directionWidth).Align(lipgloss.Left).Render(value.direction)
+		lines = append(lines, ansi.Truncate(line, width, ""))
 	}
 	return lines
 }
