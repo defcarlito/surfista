@@ -79,7 +79,7 @@ func (m *Model) applySort() {
 		for _, spot := range m.spots {
 			state := m.forecasts[spot.ID]
 			value := conditionSortValue{rank: -1}
-			if !state.loading && state.err == nil {
+			if len(state.forecast.Slots) > 0 {
 				if slot, ok := slotsByHour(state.forecast, now)[currentHour]; ok {
 					value.rank = conditionRank(slot.Rating)
 					value.maxHeight = slot.SurfHeight.Max

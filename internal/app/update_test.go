@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -25,6 +26,19 @@ func (resizeTestTracker) Add(surf.Spot) (bool, error) {
 
 func (resizeTestTracker) Remove(string) (bool, error) {
 	return true, nil
+}
+
+type appTestCacheTracker struct {
+	resizeTestTracker
+	entries map[string]surf.ForecastCacheEntry
+}
+
+func (t appTestCacheTracker) LoadForecastCache() (map[string]surf.ForecastCacheEntry, error) {
+	return t.entries, nil
+}
+
+func (appTestCacheTracker) SaveForecastCache(surf.ForecastCacheEntry) error {
+	return nil
 }
 
 func TestWindowSizeReachesSearchBeforeScreenOpens(t *testing.T) {
@@ -96,6 +110,36 @@ func TestInitialLoadingWaitsForPrefetchedForecastDetails(t *testing.T) {
 	updated = updatedModel.(Model)
 	if updated.current != homeScreen {
 		t.Fatal("dashboard did not open after forecast and detail prefetch completed")
+	}
+}
+
+func TestCompleteForecastCacheStartsOnDashboardWhileRefreshing(t *testing.T) {
+	t.Parallel()
+
+	updatedAt := time.Date(2026, time.July, 22, 12, 0, 0, 0, time.UTC)
+	tracker := appTestCacheTracker{
+		entries: map[string]surf.ForecastCacheEntry{
+			"honolua": {
+				SpotID:            "honolua",
+				Forecast:          surf.Forecast{SpotID: "honolua", Slots: []surf.ForecastSlot{{Rating: "Fair"}}},
+				ForecastUpdatedAt: updatedAt,
+				Details:           surf.ForecastDetails{SpotID: "honolua"},
+				DetailsUpdatedAt:  updatedAt,
+			},
+		},
+	}
+	model := New(
+		resizeTestSearcher{},
+		tracker,
+		&appTestFullForecastProvider{},
+		[]surf.Spot{{ID: "honolua"}},
+		nil,
+	)
+	if model.current != homeScreen || model.initialForecasts != 0 {
+		t.Fatalf("cached initial state = screen %v loads %d, want home with background refresh", model.current, model.initialForecasts)
+	}
+	if model.Init() == nil {
+		t.Fatal("cached dashboard did not retain its background refresh commands")
 	}
 }
 

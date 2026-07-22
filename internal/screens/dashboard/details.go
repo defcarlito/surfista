@@ -126,10 +126,13 @@ func (m Model) detailsStatus(canScrollUp, canScrollDown bool, width int) string 
 	status := ui.DashboardDetailHelpStyle.Render(strings.Join(actions, " • "))
 
 	state := m.details[m.detailsSpot.ID]
-	if state.loading {
+	switch {
+	case state.loading && !state.usable():
 		status = ui.DashboardDetailHelpStyle.Render("loading forecast details… • " + strings.Join(actions, " • "))
-	} else if state.err != nil {
-		status = ui.ErrorStyle.Render("details unavailable: "+state.err.Error()) +
+	case state.err != nil && state.usable():
+		status = ui.DashboardDetailHelpStyle.Render("using cached details • " + strings.Join(actions, " • "))
+	case state.err != nil:
+		status = ui.ErrorStyle.Render("details unavailable") +
 			ui.DashboardDetailHelpStyle.Render(" • "+strings.Join(actions, " • "))
 	}
 	status = ansi.Truncate(status, width, "")
@@ -150,12 +153,13 @@ func (m Model) detailCategoryHeader(contentWidth, cellWidth int) string {
 
 func (m Model) detailForecastRow(row forecastDetailRow, contentWidth, cellWidth int, swellLayout swellColumnLayout) string {
 	detailsState := m.details[m.detailsSpot.ID]
+	detailsLoading := detailsState.loading && !detailsState.usable()
 	cells := [][]string{
 		surfHeightRowLines(row.forecast, cellWidth),
 		swellRowLines(row.forecast, cellWidth, swellLayout),
-		windDetailLines(row.details, row.hasDetail, detailsState.loading, detailsState.details.Units),
-		tideDetailLines(detailsState.details, row.forecast.Timestamp, detailsState.loading),
-		temperatureDetailLines(row.details, row.hasDetail, detailsState.loading, detailsState.details.Units),
+		windDetailLines(row.details, row.hasDetail, detailsLoading, detailsState.details.Units),
+		tideDetailLines(detailsState.details, row.forecast.Timestamp, detailsLoading),
+		temperatureDetailLines(row.details, row.hasDetail, detailsLoading, detailsState.details.Units),
 	}
 
 	gridLines := make([]string, 0, detailsForecastRowHeight)
@@ -176,7 +180,7 @@ func (m Model) detailForecastRow(row forecastDetailRow, contentWidth, cellWidth 
 
 func (m Model) detailsForecastRows() []forecastDetailRow {
 	forecastState, ok := m.forecasts[m.detailsSpot.ID]
-	if !ok || forecastState.loading || forecastState.err != nil {
+	if !ok || !forecastState.usable() {
 		return nil
 	}
 	detailsState := m.details[m.detailsSpot.ID]

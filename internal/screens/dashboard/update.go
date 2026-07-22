@@ -14,21 +14,35 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.ensureSelectedVisible()
 		m.clampDetailsScroll()
 	case ForecastLoadedMsg:
-		if _, tracked := m.forecasts[msg.SpotID]; !tracked {
+		state, tracked := m.forecasts[msg.SpotID]
+		if !tracked {
 			return m, nil
 		}
-		m.forecasts[msg.SpotID] = forecastState{
-			forecast: msg.Forecast,
-			err:      msg.Err,
+		state.loading = false
+		state.err = msg.Err
+		if msg.Err == nil {
+			state.forecast = msg.Forecast
+			state.updatedAt = m.now()
+		}
+		m.forecasts[msg.SpotID] = state
+		if msg.Err == nil {
+			m.saveForecastCache(msg.SpotID)
 		}
 		m.applySort()
 	case ForecastDetailsLoadedMsg:
-		if _, tracked := m.forecasts[msg.SpotID]; !tracked {
+		state, tracked := m.details[msg.SpotID]
+		if !tracked {
 			return m, nil
 		}
-		m.details[msg.SpotID] = forecastDetailsState{
-			details: msg.Details,
-			err:     msg.Err,
+		state.loading = false
+		state.err = msg.Err
+		if msg.Err == nil {
+			state.details = msg.Details
+			state.updatedAt = m.now()
+		}
+		m.details[msg.SpotID] = state
+		if msg.Err == nil {
+			m.saveForecastCache(msg.SpotID)
 		}
 	case SpotRemovedMsg:
 		if !m.confirmRemoval || msg.SpotID != m.removalSpot.ID {

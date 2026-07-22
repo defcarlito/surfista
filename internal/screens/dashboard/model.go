@@ -13,19 +13,34 @@ import (
 const forecastTimeout = 20 * time.Second
 
 type forecastState struct {
-	forecast surf.Forecast
-	loading  bool
-	err      error
+	forecast  surf.Forecast
+	updatedAt time.Time
+	loading   bool
+	err       error
 }
 
 type forecastDetailsState struct {
-	details surf.ForecastDetails
-	loading bool
-	err     error
+	details   surf.ForecastDetails
+	updatedAt time.Time
+	loading   bool
+	err       error
+}
+
+func (s forecastState) usable() bool {
+	return !s.updatedAt.IsZero() || len(s.forecast.Slots) > 0
+}
+
+func (s forecastDetailsState) usable() bool {
+	return !s.updatedAt.IsZero() || s.details.SpotID != "" || len(s.details.Slots) > 0 || len(s.details.Tides) > 0
 }
 
 type Remover interface {
 	Remove(spotID string) (bool, error)
+}
+
+type ForecastCache interface {
+	LoadForecastCache() (map[string]surf.ForecastCacheEntry, error)
+	SaveForecastCache(entry surf.ForecastCacheEntry) error
 }
 
 // Model owns the favorite-spots dashboard and its independently loading
@@ -36,6 +51,7 @@ type Model struct {
 	provider        surf.ForecastProvider
 	detailsProvider surf.ForecastDetailsProvider
 	details         map[string]forecastDetailsState
+	forecastCache   ForecastCache
 	remover         Remover
 	loadErr         error
 	terminalWidth   int
@@ -59,11 +75,27 @@ type Model struct {
 
 func New(provider surf.ForecastProvider, remover Remover, spots []surf.Spot, loadErr error) Model {
 	detailsProvider, _ := provider.(surf.ForecastDetailsProvider)
+	forecastCache, _ := remover.(ForecastCache)
+	cached := map[string]surf.ForecastCacheEntry{}
+	if forecastCache != nil {
+		if loaded, err := forecastCache.LoadForecastCache(); err == nil {
+			cached = loaded
+		}
+	}
 	states := make(map[string]forecastState, len(spots))
 	detailStates := make(map[string]forecastDetailsState, len(spots))
 	for _, spot := range spots {
-		states[spot.ID] = forecastState{loading: provider != nil}
-		detailStates[spot.ID] = forecastDetailsState{loading: detailsProvider != nil}
+		entry := cached[spot.ID]
+		states[spot.ID] = forecastState{
+			forecast:  entry.Forecast,
+			updatedAt: entry.ForecastUpdatedAt,
+			loading:   provider != nil,
+		}
+		detailStates[spot.ID] = forecastDetailsState{
+			details:   entry.Details,
+			updatedAt: entry.DetailsUpdatedAt,
+			loading:   detailsProvider != nil,
+		}
 	}
 	addedOrder := make(map[string]int, len(spots))
 	for index, spot := range spots {
@@ -87,6 +119,7 @@ func New(provider surf.ForecastProvider, remover Remover, spots []surf.Spot, loa
 		provider:        provider,
 		detailsProvider: detailsProvider,
 		details:         detailStates,
+		forecastCache:   forecastCache,
 		remover:         remover,
 		loadErr:         loadErr,
 		selectedIndex:   -1,
@@ -160,12 +193,12 @@ func (m Model) Init() tea.Cmd {
 func (m Model) PendingForecasts() int {
 	pending := 0
 	for _, state := range m.forecasts {
-		if state.loading {
+		if state.loading && state.updatedAt.IsZero() {
 			pending++
 		}
 	}
 	for _, state := range m.details {
-		if state.loading {
+		if state.loading && state.updatedAt.IsZero() {
 			pending++
 		}
 	}
@@ -212,6 +245,21 @@ func (m Model) fetchForecastDetails(spotID string) tea.Cmd {
 	}
 }
 
+func (m Model) saveForecastCache(spotID string) {
+	if m.forecastCache == nil {
+		return
+	}
+	forecast := m.forecasts[spotID]
+	details := m.details[spotID]
+	_ = m.forecastCache.SaveForecastCache(surf.ForecastCacheEntry{
+		SpotID:            spotID,
+		Forecast:          forecast.forecast,
+		ForecastUpdatedAt: forecast.updatedAt,
+		Details:           details.details,
+		DetailsUpdatedAt:  details.updatedAt,
+	})
+}
+
 func (m *Model) openSelectedDetails() tea.Cmd {
 	if !m.HasSelection() {
 		return nil
@@ -222,13 +270,15 @@ func (m *Model) openSelectedDetails() tea.Cmd {
 	m.detailsSpot = spot
 	m.resetDetailsScroll()
 	state, cached := m.details[spot.ID]
-	if cached && (state.loading || state.err == nil) {
+	if cached && (state.loading || (state.err == nil && state.usable())) {
 		return nil
 	}
 	if m.detailsProvider == nil {
 		m.details[spot.ID] = forecastDetailsState{err: errors.New("detailed forecast is unavailable")}
 		return nil
 	}
-	m.details[spot.ID] = forecastDetailsState{loading: true}
+	state.loading = true
+	state.err = nil
+	m.details[spot.ID] = state
 	return m.fetchForecastDetails(spot.ID)
 }

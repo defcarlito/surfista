@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"surfista/internal/surf"
 	"surfista/internal/ui"
@@ -391,13 +392,13 @@ func (m Model) forecastTable(width int) string {
 func (m Model) spotCard(spot surf.Spot, slotWidth int, selected bool) string {
 	state := m.forecasts[spot.ID]
 	innerWidth := slotWidth*len(dashboardHours) + len(dashboardHours) - 1
-	name := ui.DashboardSpotStyle.Width(innerWidth).MaxWidth(innerWidth).Align(lipgloss.Center).Render(spot.Name)
+	name := m.spotNameLine(spot.Name, innerWidth, state)
 
-	if state.loading {
+	if state.loading && !state.usable() {
 		return statusCard(name, ui.Muted("Loading today's forecast…"), innerWidth, selected)
 	}
-	if state.err != nil {
-		return statusCard(name, ui.Error("Forecast unavailable: "+state.err.Error()), innerWidth, selected)
+	if state.err != nil && !state.usable() {
+		return statusCard(name, ui.Error("Forecast temporarily unavailable."), innerWidth, selected)
 	}
 
 	now := m.now()
@@ -428,6 +429,36 @@ func (m Model) spotCard(spot surf.Spot, slotWidth int, selected bool) string {
 		segmentedLine(heights, selected),
 		segmentedBorder("╰", "┴", "╯", slotWidth, selected),
 	}, "\n")
+}
+
+func (m Model) spotNameLine(name string, width int, state forecastState) string {
+	styledName := ui.DashboardSpotStyle.Render(ansi.Truncate(name, width, ""))
+	if state.err == nil || state.updatedAt.IsZero() {
+		return lipgloss.NewStyle().Width(width).MaxWidth(width).Align(lipgloss.Center).Render(styledName)
+	}
+
+	lastUpdated := ui.DashboardSubtitleStyle.Render(formatLastUpdated(m.now(), state.updatedAt))
+	canvas := lipgloss.NewCanvas(width, 1)
+	line := canvas.Compose(lipgloss.NewCompositor(
+		lipgloss.NewLayer(styledName).X(max(0, (width-lipgloss.Width(styledName))/2)),
+		lipgloss.NewLayer(lastUpdated).X(max(0, width-lipgloss.Width(lastUpdated)-1)),
+	)).Render()
+	return lipgloss.NewStyle().Width(width).MaxWidth(width).Render(line)
+}
+
+func formatLastUpdated(now, updatedAt time.Time) string {
+	age := now.Sub(updatedAt)
+	if age < 0 {
+		age = 0
+	}
+	switch {
+	case age < time.Hour:
+		return fmt.Sprintf("Last updated %dm ago", int(age/time.Minute))
+	case age < 24*time.Hour:
+		return fmt.Sprintf("Last updated %dh ago", int(age/time.Hour))
+	default:
+		return fmt.Sprintf("Last updated %dd ago", int(age/(24*time.Hour)))
+	}
 }
 
 func statusCard(name, status string, innerWidth int, selected bool) string {

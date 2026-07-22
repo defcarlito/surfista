@@ -48,6 +48,17 @@ type ForecastDetails struct {
 	Tides     []TidePoint
 }
 
+// ForecastCacheEntry is the last successful base and detailed forecast saved
+// for a favorite location. Each timestamp belongs to its corresponding data
+// because the two requests can succeed independently.
+type ForecastCacheEntry struct {
+	SpotID            string
+	Forecast          Forecast
+	ForecastUpdatedAt time.Time
+	Details           ForecastDetails
+	DetailsUpdatedAt  time.Time
+}
+
 type ForecastUnits struct {
 	WindSpeed   string
 	TideHeight  string

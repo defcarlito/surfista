@@ -23,6 +23,24 @@ type fakeForecastProvider struct {
 	detailSpotIDs []string
 }
 
+type fakeForecastCache struct {
+	entries map[string]surf.ForecastCacheEntry
+	saved   []surf.ForecastCacheEntry
+}
+
+func (c *fakeForecastCache) Remove(string) (bool, error) {
+	return true, nil
+}
+
+func (c *fakeForecastCache) LoadForecastCache() (map[string]surf.ForecastCacheEntry, error) {
+	return c.entries, nil
+}
+
+func (c *fakeForecastCache) SaveForecastCache(entry surf.ForecastCacheEntry) error {
+	c.saved = append(c.saved, entry)
+	return nil
+}
+
 func (p *fakeForecastProvider) Forecast(_ context.Context, spotID string) (surf.Forecast, error) {
 	p.spotIDs = append(p.spotIDs, spotID)
 	return p.forecast, p.err
@@ -76,6 +94,125 @@ func TestForecastResultUpdatesOnlyTrackedSpot(t *testing.T) {
 	updated, _ = updated.Update(ForecastLoadedMsg{SpotID: "not-tracked", Forecast: surf.Forecast{SpotID: "not-tracked"}})
 	if _, exists := updated.forecasts["not-tracked"]; exists {
 		t.Fatal("accepted a forecast for an untracked spot")
+	}
+}
+
+func TestCachedForecastsOpenDashboardWhileRefreshingInBackground(t *testing.T) {
+	t.Parallel()
+
+	updatedAt := time.Date(2026, time.July, 22, 12, 0, 0, 0, time.UTC)
+	cache := &fakeForecastCache{entries: map[string]surf.ForecastCacheEntry{
+		"honolua": {
+			SpotID:            "honolua",
+			Forecast:          surf.Forecast{SpotID: "honolua", Slots: []surf.ForecastSlot{{Rating: "Fair"}}},
+			ForecastUpdatedAt: updatedAt,
+			Details:           surf.ForecastDetails{SpotID: "honolua", Slots: []surf.ForecastDetailSlot{{Timestamp: updatedAt}}},
+			DetailsUpdatedAt:  updatedAt,
+		},
+	}}
+	provider := &fakeForecastProvider{}
+	model := New(provider, cache, []surf.Spot{{ID: "honolua", Name: "Honolua Bay"}}, nil)
+
+	if pending := model.PendingForecasts(); pending != 0 {
+		t.Fatalf("pending forecasts = %d, want 0 with a complete cache", pending)
+	}
+	if got := model.forecasts["honolua"]; got.updatedAt != updatedAt || got.forecast.Slots[0].Rating != "Fair" || !got.loading {
+		t.Fatalf("hydrated forecast state = %+v", got)
+	}
+	if got := model.details["honolua"]; got.updatedAt != updatedAt || len(got.details.Slots) != 1 || !got.loading {
+		t.Fatalf("hydrated detail state = %+v", got)
+	}
+	if messages := commandMessages(t, model.Init()); len(messages) != 2 {
+		t.Fatalf("background refresh messages = %d, want 2", len(messages))
+	}
+}
+
+func TestFailedRefreshKeepsCachedForecastAndShowsLastUpdated(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.July, 22, 12, 43, 0, 0, time.UTC)
+	updatedAt := now.Add(-90 * time.Minute)
+	cache := &fakeForecastCache{entries: map[string]surf.ForecastCacheEntry{
+		"honolua": {
+			SpotID: "honolua",
+			Forecast: surf.Forecast{SpotID: "honolua", Slots: []surf.ForecastSlot{{
+				Timestamp:  time.Date(2026, time.July, 22, 12, 0, 0, 0, time.UTC),
+				Rating:     "Fair",
+				SurfHeight: surf.SurfHeight{Min: 2, Max: 3},
+			}}},
+			ForecastUpdatedAt: updatedAt,
+		},
+	}}
+	model := New(nil, cache, []surf.Spot{{ID: "honolua", Name: "Honolua Bay"}}, nil)
+	model.now = func() time.Time { return now }
+	model, _ = model.Update(ForecastLoadedMsg{
+		SpotID: "honolua",
+		Err:    errors.New("Surfline wave forecast returned 403: <html>blocked</html>"),
+	})
+
+	state := model.forecasts["honolua"]
+	if !state.usable() || state.forecast.Slots[0].Rating != "Fair" || state.updatedAt != updatedAt {
+		t.Fatalf("failed refresh discarded cached state: %+v", state)
+	}
+	card := model.spotCard(model.spots[0], 10, false)
+	plain := ansi.Strip(card)
+	if !strings.Contains(plain, "Fair") || !strings.Contains(plain, "Last updated 1h ago") {
+		t.Fatalf("cached fallback card is missing forecast or age:\n%s", plain)
+	}
+	if strings.Contains(plain, "403") || strings.Contains(plain, "<html>") {
+		t.Fatalf("cached fallback card leaked the raw provider error:\n%s", plain)
+	}
+	styledAge := ui.DashboardSubtitleStyle.Render("Last updated 1h ago")
+	if !strings.Contains(card, styledAge) {
+		t.Fatal("last-updated label does not use the dashboard subtitle color")
+	}
+	nameLine := ansi.Strip(model.spotNameLine("Honolua Bay", 80, state))
+	if !strings.HasSuffix(nameLine, "Last updated 1h ago ") {
+		t.Fatalf("last-updated label does not have right-border spacing: %q", nameLine)
+	}
+}
+
+func TestSuccessfulRefreshReplacesAndPersistsCache(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.July, 22, 12, 43, 0, 0, time.UTC)
+	cache := &fakeForecastCache{entries: map[string]surf.ForecastCacheEntry{}}
+	model := New(nil, cache, []surf.Spot{{ID: "honolua"}}, nil)
+	model.now = func() time.Time { return now }
+	forecast := surf.Forecast{SpotID: "honolua", Slots: []surf.ForecastSlot{{Rating: "Good"}}}
+	model, _ = model.Update(ForecastLoadedMsg{SpotID: "honolua", Forecast: forecast})
+	details := surf.ForecastDetails{SpotID: "honolua", Units: surf.ForecastUnits{WindSpeed: "KTS"}}
+	model, _ = model.Update(ForecastDetailsLoadedMsg{SpotID: "honolua", Details: details})
+
+	if len(cache.saved) != 2 {
+		t.Fatalf("cache saves = %d, want one per successful response", len(cache.saved))
+	}
+	got := cache.saved[len(cache.saved)-1]
+	if got.Forecast.Slots[0].Rating != "Good" || got.Details.Units.WindSpeed != "KTS" ||
+		got.ForecastUpdatedAt != now || got.DetailsUpdatedAt != now {
+		t.Fatalf("persisted cache entry = %+v", got)
+	}
+}
+
+func TestLastUpdatedAgeUsesMinutesHoursAndDays(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.July, 22, 12, 0, 0, 0, time.UTC)
+	tests := []struct {
+		age  time.Duration
+		want string
+	}{
+		{age: time.Minute, want: "Last updated 1m ago"},
+		{age: 59 * time.Minute, want: "Last updated 59m ago"},
+		{age: time.Hour, want: "Last updated 1h ago"},
+		{age: 23 * time.Hour, want: "Last updated 23h ago"},
+		{age: 24 * time.Hour, want: "Last updated 1d ago"},
+		{age: 49 * time.Hour, want: "Last updated 2d ago"},
+	}
+	for _, test := range tests {
+		if got := formatLastUpdated(now, now.Add(-test.age)); got != test.want {
+			t.Errorf("formatLastUpdated(%v) = %q, want %q", test.age, got, test.want)
+		}
 	}
 }
 
