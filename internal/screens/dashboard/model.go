@@ -46,31 +46,32 @@ type ForecastCache interface {
 // Model owns the favorite-spots dashboard and its independently loading
 // forecasts. Forecasts are keyed by Surfline's stable spot ID.
 type Model struct {
-	spots           []surf.Spot
-	forecasts       map[string]forecastState
-	provider        surf.ForecastProvider
-	detailsProvider surf.ForecastDetailsProvider
-	details         map[string]forecastDetailsState
-	forecastCache   ForecastCache
-	remover         Remover
-	loadErr         error
-	terminalWidth   int
-	terminalHeight  int
-	selectedIndex   int
-	scrollOffset    int
-	confirmRemoval  bool
-	removing        bool
-	removalSpot     surf.Spot
-	removalErr      error
-	detailsOpen     bool
-	detailsSpot     surf.Spot
-	detailsScroll   int
-	openURL         func(string) error
-	sortMode        SortMode
-	sortStore       SortStore
-	addedOrder      map[string]int
-	nextAddedOrder  int
-	now             func() time.Time
+	spots             []surf.Spot
+	forecasts         map[string]forecastState
+	provider          surf.ForecastProvider
+	detailsProvider   surf.ForecastDetailsProvider
+	details           map[string]forecastDetailsState
+	forecastCache     ForecastCache
+	remover           Remover
+	loadErr           error
+	terminalWidth     int
+	terminalHeight    int
+	forecastDayOffset int
+	selectedIndex     int
+	scrollOffset      int
+	confirmRemoval    bool
+	removing          bool
+	removalSpot       surf.Spot
+	removalErr        error
+	detailsOpen       bool
+	detailsSpot       surf.Spot
+	detailsScroll     int
+	openURL           func(string) error
+	sortMode          SortMode
+	sortStore         SortStore
+	addedOrder        map[string]int
+	nextAddedOrder    int
+	now               func() time.Time
 }
 
 func New(provider surf.ForecastProvider, remover Remover, spots []surf.Spot, loadErr error) Model {
@@ -167,6 +168,7 @@ func (m *Model) removeSpot(spotID string) {
 	delete(m.forecasts, spotID)
 	delete(m.details, spotID)
 	delete(m.addedOrder, spotID)
+	m.clampForecastDayOffset()
 	m.clampScrollOffset()
 	m.selectedIndex = -1
 	m.confirmRemoval = false

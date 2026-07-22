@@ -28,6 +28,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		if msg.Err == nil {
 			m.saveForecastCache(msg.SpotID)
 		}
+		m.clampForecastDayOffset()
 		m.applySort()
 	case ForecastDetailsLoadedMsg:
 		state, tracked := m.details[msg.SpotID]
@@ -94,6 +95,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m, nil
 		}
 		switch msg.String() {
+		case "h":
+			m.moveForecastDay(-1)
+		case "l":
+			m.moveForecastDay(1)
 		case "j", "down":
 			if len(m.spots) == 0 {
 				break

@@ -27,9 +27,9 @@ const (
 var dashboardHours = [...]int{0, 3, 6, 9, 12, 15, 18, 21, 24}
 
 const (
-	dashboardBrowseHelp = "↑/k ↓/j navigate • / search Surfline • q quit"
-	dashboardSelectHelp = "↑/k ↓/j navigate • enter details • x remove • esc unselect • q quit"
-	dashboardURLHelp    = "↑/k ↓/j navigate • enter details • u open • x remove • esc unselect • q quit"
+	dashboardBrowseHelp = "h/l day • ↑/↓/j/k • / search Surfline • q quit"
+	dashboardSelectHelp = "h/l day • ↑/↓/j/k • enter details • x remove • esc clear • q quit"
+	dashboardURLHelp    = "h/l day • ↑/↓/j/k • enter details • u open • x remove • esc clear • q quit"
 )
 
 func (m Model) View() string {
@@ -61,7 +61,7 @@ func (m Model) View() string {
 }
 
 func (m Model) dashboardHeader(width int) string {
-	return lipgloss.JoinVertical(lipgloss.Left, m.forecastHeader(width), "")
+	return m.forecastHeader(width)
 }
 
 func (m Model) dashboardFooter(width int) string {
@@ -132,10 +132,21 @@ func (m Model) dashboardBody(width, height int) string {
 
 func (m Model) forecastHeader(width int) string {
 	slotWidth := dashboardSlotWidth(width)
+	dateCells := make([]string, 0, len(dashboardHours))
 	headerCells := make([]string, 0, len(dashboardHours))
 	nowCells := make([]string, 0, len(dashboardHours))
-	for _, hour := range dashboardHours {
-		if isCurrentDashboardHour(hour, m.now()) {
+	startDate := m.dashboardForecastDate(m.forecastDayOffset)
+	endDate := startDate.AddDate(0, 0, 1)
+	for index, hour := range dashboardHours {
+		date := ""
+		if index == 0 {
+			date = formatDashboardDate(startDate)
+		} else if index == len(dashboardHours)-1 {
+			date = formatDashboardDate(endDate)
+		}
+		dateCells = append(dateCells, tableCell(ui.DashboardSubtitleStyle.Render(date), slotWidth))
+
+		if m.forecastDayOffset == 0 && isCurrentDashboardHour(hour, m.now()) {
 			headerCells = append(headerCells, ui.DashboardCurrentHourStyle.Width(slotWidth).MaxWidth(slotWidth).Render(formatDashboardHour(hour)))
 			nowCells = append(nowCells, ui.DashboardNowStyle.Width(slotWidth).MaxWidth(slotWidth).Render("now"))
 			continue
@@ -143,11 +154,12 @@ func (m Model) forecastHeader(width int) string {
 		headerCells = append(headerCells, tableCell(formatDashboardHour(hour), slotWidth))
 		nowCells = append(nowCells, tableCell("", slotWidth))
 	}
+	dateRow := " " + strings.Join(dateCells, " ") + " "
 	header := " " + strings.Join(headerCells, " ") + " "
 	nowRow := " " + strings.Join(nowCells, " ") + " "
 	cardWidth := slotWidth*len(dashboardHours) + gridBorderWidth
 	return lipgloss.NewStyle().Width(width).Align(lipgloss.Center).Render(
-		lipgloss.NewStyle().Width(cardWidth).Render(lipgloss.JoinVertical(lipgloss.Left, header, nowRow)),
+		lipgloss.NewStyle().Width(cardWidth).Render(lipgloss.JoinVertical(lipgloss.Left, dateRow, header, nowRow)),
 	)
 }
 
@@ -375,16 +387,16 @@ func (m Model) spotCard(spot surf.Spot, slotWidth int, selected bool) string {
 	name := m.spotNameLine(spot.Name, innerWidth, state)
 
 	if state.loading && !state.usable() {
-		return statusCard(name, ui.Muted("Loading today's forecast…"), innerWidth, selected)
+		return statusCard(name, ui.Muted("Loading forecast…"), innerWidth, selected)
 	}
 	if state.err != nil && !state.usable() {
 		return statusCard(name, ui.Error("Forecast temporarily unavailable."), innerWidth, selected)
 	}
 
 	now := m.now()
-	slots := slotsByHour(state.forecast, now)
+	slots := slotsByHourForDay(state.forecast, now, m.forecastDayOffset)
 	if len(slots) == 0 {
-		return statusCard(name, ui.Muted("No forecast available for today."), innerWidth, selected)
+		return statusCard(name, ui.Muted("No forecast available for this day."), innerWidth, selected)
 	}
 
 	ratings := make([]string, 0, len(dashboardHours))
@@ -520,9 +532,15 @@ func gridBorder(value string, selected bool) string {
 }
 
 func slotsForLocalDay(forecast surf.Forecast, now time.Time) []surf.ForecastSlot {
+	return slotsForLocalDayOffset(forecast, now, 0)
+}
+
+func slotsForLocalDayOffset(forecast surf.Forecast, now time.Time, dayOffset int) []surf.ForecastSlot {
 	localNow := now.UTC().Add(forecast.UTCOffset)
 	year, month, day := localNow.Date()
-	nextMidnight := time.Date(year, month, day+1, 0, 0, 0, 0, time.UTC)
+	selectedDate := time.Date(year, month, day, 0, 0, 0, 0, time.UTC).AddDate(0, 0, dayOffset)
+	year, month, day = selectedDate.Date()
+	nextMidnight := selectedDate.AddDate(0, 0, 1)
 
 	slots := make([]surf.ForecastSlot, 0, len(forecast.Slots))
 	for _, slot := range forecast.Slots {
@@ -536,10 +554,16 @@ func slotsForLocalDay(forecast surf.Forecast, now time.Time) []surf.ForecastSlot
 }
 
 func slotsByHour(forecast surf.Forecast, now time.Time) map[int]surf.ForecastSlot {
+	return slotsByHourForDay(forecast, now, 0)
+}
+
+func slotsByHourForDay(forecast surf.Forecast, now time.Time, dayOffset int) map[int]surf.ForecastSlot {
 	slots := make(map[int]surf.ForecastSlot, len(dashboardHours))
 	localNow := now.UTC().Add(forecast.UTCOffset)
 	year, month, day := localNow.Date()
-	for _, slot := range slotsForLocalDay(forecast, now) {
+	selectedDate := time.Date(year, month, day, 0, 0, 0, 0, time.UTC).AddDate(0, 0, dayOffset)
+	year, month, day = selectedDate.Date()
+	for _, slot := range slotsForLocalDayOffset(forecast, now, dayOffset) {
 		localSlot := slot.Timestamp.UTC().Add(forecast.UTCOffset)
 		sy, sm, sd := localSlot.Date()
 		hour := localSlot.Hour()
@@ -607,6 +631,10 @@ func formatDashboardHour(hour int) string {
 		return "12a"
 	}
 	return strings.TrimSuffix(formatHour(time.Date(2000, time.January, 1, hour, 0, 0, 0, time.UTC)), "m")
+}
+
+func formatDashboardDate(value time.Time) string {
+	return fmt.Sprintf("%d/%d", value.Month(), value.Day())
 }
 
 func formatHeight(height surf.SurfHeight) string {

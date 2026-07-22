@@ -80,7 +80,7 @@ func (m *Model) applySort() {
 			state := m.forecasts[spot.ID]
 			value := conditionSortValue{rank: -1}
 			if len(state.forecast.Slots) > 0 {
-				if slot, ok := slotsByHour(state.forecast, now)[currentHour]; ok {
+				if slot, ok := slotsByHourForDay(state.forecast, now, m.forecastDayOffset)[currentHour]; ok {
 					value.rank = conditionRank(slot.Rating)
 					value.maxHeight = slot.SurfHeight.Max
 					value.minHeight = slot.SurfHeight.Min
