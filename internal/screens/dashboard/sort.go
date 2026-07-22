@@ -60,32 +60,50 @@ func conditionRank(rating string) int {
 	}
 }
 
+type conditionSortValue struct {
+	rank      int
+	maxHeight float64
+	minHeight float64
+}
+
 func (m *Model) applySort() {
 	selectedID := ""
 	if m.HasSelection() {
 		selectedID = m.spots[m.selectedIndex].ID
 	}
 
-	ranks := make(map[string]int, len(m.spots))
+	conditions := make(map[string]conditionSortValue, len(m.spots))
 	if m.sortMode == SortConditionHighToLow {
 		now := m.now()
 		currentHour := now.Hour() / 3 * 3
 		for _, spot := range m.spots {
 			state := m.forecasts[spot.ID]
-			rank := -1
+			value := conditionSortValue{rank: -1}
 			if !state.loading && state.err == nil {
 				if slot, ok := slotsByHour(state.forecast, now)[currentHour]; ok {
-					rank = conditionRank(slot.Rating)
+					value.rank = conditionRank(slot.Rating)
+					value.maxHeight = slot.SurfHeight.Max
+					value.minHeight = slot.SurfHeight.Min
 				}
 			}
-			ranks[spot.ID] = rank
+			conditions[spot.ID] = value
 		}
 	}
 
 	sort.SliceStable(m.spots, func(i, j int) bool {
 		left, right := m.spots[i], m.spots[j]
-		if m.sortMode == SortConditionHighToLow && ranks[left.ID] != ranks[right.ID] {
-			return ranks[left.ID] > ranks[right.ID]
+		if m.sortMode == SortConditionHighToLow {
+			leftCondition := conditions[left.ID]
+			rightCondition := conditions[right.ID]
+			if leftCondition.rank != rightCondition.rank {
+				return leftCondition.rank > rightCondition.rank
+			}
+			if leftCondition.maxHeight != rightCondition.maxHeight {
+				return leftCondition.maxHeight > rightCondition.maxHeight
+			}
+			if leftCondition.minHeight != rightCondition.minHeight {
+				return leftCondition.minHeight > rightCondition.minHeight
+			}
 		}
 		return m.addedOrder[left.ID] < m.addedOrder[right.ID]
 	})

@@ -98,12 +98,60 @@ func TestPersistedConditionSortReordersAsForecastsArrive(t *testing.T) {
 	}
 }
 
+func TestConditionSortUsesCurrentWaveHeightAsTieBreaker(t *testing.T) {
+	t.Parallel()
+
+	model := New(nil, nil, []surf.Spot{
+		{ID: "lower", Name: "Lower"},
+		{ID: "higher", Name: "Higher"},
+		{ID: "same-max", Name: "Same Max"},
+		{ID: "better-condition", Name: "Better Condition"},
+		{ID: "same-range", Name: "Same Range"},
+	}, nil)
+	model.now = func() time.Time { return time.Date(2026, time.July, 21, 12, 30, 0, 0, time.UTC) }
+	model.forecasts["lower"] = forecastState{forecast: surf.Forecast{
+		SpotID: "lower",
+		Slots: []surf.ForecastSlot{
+			{
+				Timestamp:  time.Date(2026, time.July, 21, 9, 0, 0, 0, time.UTC),
+				Rating:     "Fair",
+				SurfHeight: surf.SurfHeight{Min: 10, Max: 12},
+			},
+			{
+				Timestamp:  time.Date(2026, time.July, 21, 12, 0, 0, 0, time.UTC),
+				Rating:     "Fair",
+				SurfHeight: surf.SurfHeight{Min: 1, Max: 3},
+			},
+		},
+	}}
+	model.forecasts["higher"] = forecastState{forecast: sortTestForecastWithHeight("higher", "Fair", 2, 5)}
+	model.forecasts["same-max"] = forecastState{forecast: sortTestForecastWithHeight("same-max", "Fair", 1, 5)}
+	model.forecasts["better-condition"] = forecastState{forecast: sortTestForecastWithHeight("better-condition", "Good", 1, 2)}
+	model.forecasts["same-range"] = forecastState{forecast: sortTestForecastWithHeight("same-range", "Fair", 2, 5)}
+	model.sortMode = SortConditionHighToLow
+
+	model.applySort()
+
+	want := []string{"better-condition", "higher", "same-range", "same-max", "lower"}
+	if got := spotIDs(model.spots); !reflect.DeepEqual(got, want) {
+		t.Fatalf("condition and wave-height order = %v, want %v", got, want)
+	}
+}
+
 func sortTestForecast(spotID, rating string) surf.Forecast {
+	return sortTestForecastWithHeight(spotID, rating, 0, 0)
+}
+
+func sortTestForecastWithHeight(spotID, rating string, minHeight, maxHeight float64) surf.Forecast {
 	return surf.Forecast{
 		SpotID: spotID,
 		Slots: []surf.ForecastSlot{{
 			Timestamp: time.Date(2026, time.July, 21, 12, 0, 0, 0, time.UTC),
 			Rating:    rating,
+			SurfHeight: surf.SurfHeight{
+				Min: minHeight,
+				Max: maxHeight,
+			},
 		}},
 	}
 }
