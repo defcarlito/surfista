@@ -27,9 +27,9 @@ const (
 var dashboardHours = [...]int{0, 3, 6, 9, 12, 15, 18, 21, 24}
 
 const (
-	dashboardBrowseHelp = "h/l day • ↑/↓/j/k • / search Surfline • q quit"
-	dashboardSelectHelp = "h/l day • ↑/↓/j/k • enter details • x remove • esc clear • q quit"
-	dashboardURLHelp    = "h/l day • ↑/↓/j/k • enter details • u open • x remove • esc clear • q quit"
+	dashboardBrowseHelp = "h/l day • ↑/↓/j/k • s cycle sort • / search • q quit"
+	dashboardSelectHelp = "h/l day • ↑/↓/j/k • s cycle sort • enter • x remove • esc • q quit"
+	dashboardURLHelp    = "h/l day • ↑/↓/j/k • s cycle sort • enter • u open • x remove • esc • q quit"
 )
 
 func (m Model) View() string {
@@ -61,7 +61,10 @@ func (m Model) View() string {
 }
 
 func (m Model) dashboardHeader(width int) string {
-	return m.forecastHeader(width)
+	if m.terminalHeight > 0 && m.terminalHeight < spaciousLayoutMinHeight {
+		return lipgloss.JoinVertical(lipgloss.Left, m.forecastHeader(width), m.sortStatus(width))
+	}
+	return lipgloss.JoinVertical(lipgloss.Left, m.forecastHeader(width), "", m.sortStatus(width))
 }
 
 func (m Model) dashboardFooter(width int) string {
@@ -79,22 +82,17 @@ func (m Model) dashboardFooter(width int) string {
 		lipgloss.Height(ui.DashboardHelpStyle.Width(width).Render(dashboardURLHelp)),
 	)
 	help = fitHeight(help, maxHelpHeight)
-	sortIndicator := m.sortIndicator(width)
-	if m.terminalHeight > 0 && m.terminalHeight < spaciousLayoutMinHeight {
-		return lipgloss.JoinVertical(lipgloss.Left, sortIndicator, help, "")
-	}
-	return lipgloss.JoinVertical(lipgloss.Left, sortIndicator, "", help, "")
+	return lipgloss.JoinVertical(lipgloss.Left, help, "")
 }
 
-func (m Model) sortIndicator(width int) string {
+func (m Model) sortStatus(width int) string {
 	render := func(mode SortMode) string {
 		label := ui.DashboardSortStyle.Render("sorting by: " + mode.label())
-		control := ui.DashboardHelpStyle.Render(" • s cycle sort")
-		return lipgloss.NewStyle().Width(width).Render(label + control)
+		return lipgloss.NewStyle().Width(width).Render(label)
 	}
-	indicator := render(m.sortMode)
+	status := render(m.sortMode)
 	maxHeight := max(lipgloss.Height(render(SortTimeAdded)), lipgloss.Height(render(SortConditionHighToLow)))
-	return fitHeight(indicator, maxHeight)
+	return fitHeight(status, maxHeight)
 }
 
 func (m Model) dashboardBody(width, height int) string {

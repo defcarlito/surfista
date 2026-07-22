@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"surfista/internal/surf"
 	"surfista/internal/ui"
 )
@@ -66,7 +68,7 @@ func TestSCyclesDashboardSortAndPreservesSelection(t *testing.T) {
 	}
 	view := model.View()
 	if !strings.Contains(view, ui.DashboardSortStyle.Render("sorting by: conditions")) ||
-		!strings.Contains(view, ui.DashboardHelpStyle.Render(" • s cycle sort")) {
+		!strings.Contains(ansi.Strip(view), "s cycle sort") {
 		t.Fatalf("condition sort indicator is missing:\n%s", view)
 	}
 
