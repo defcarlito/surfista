@@ -38,6 +38,7 @@ type Model struct {
 	removing       bool
 	removalSpot    surf.Spot
 	removalErr     error
+	openURL        func(string) error
 	now            func() time.Time
 }
 
@@ -53,6 +54,7 @@ func New(provider surf.ForecastProvider, remover Remover, spots []surf.Spot, loa
 		remover:       remover,
 		loadErr:       loadErr,
 		selectedIndex: -1,
+		openURL:       systemOpenURL,
 		now:           time.Now,
 	}
 }

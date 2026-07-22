@@ -28,6 +28,7 @@ var dashboardHours = [...]int{0, 3, 6, 9, 12, 15, 18, 21, 24}
 const (
 	dashboardBrowseHelp = "↑/k ↓/j navigate • s or / search Surfline • q quit"
 	dashboardSelectHelp = "↑/k ↓/j navigate • x remove • Esc unselect • q quit"
+	dashboardURLHelp    = "↑/k ↓/j navigate • u open in browser • x remove • Esc unselect • q quit"
 )
 
 func (m Model) View() string {
@@ -71,10 +72,14 @@ func (m Model) dashboardFooter(width int) string {
 	if m.HasSelection() {
 		helpText = dashboardSelectHelp
 	}
+	if m.CanOpenSelectionURL() {
+		helpText = dashboardURLHelp
+	}
 	help := ui.DashboardHelpStyle.Width(width).Render(helpText)
 	maxHelpHeight := max(
 		lipgloss.Height(ui.DashboardHelpStyle.Width(width).Render(dashboardBrowseHelp)),
 		lipgloss.Height(ui.DashboardHelpStyle.Width(width).Render(dashboardSelectHelp)),
+		lipgloss.Height(ui.DashboardHelpStyle.Width(width).Render(dashboardURLHelp)),
 	)
 	help = fitHeight(help, maxHelpHeight)
 	if m.terminalHeight > 0 && m.terminalHeight < spaciousLayoutMinHeight {

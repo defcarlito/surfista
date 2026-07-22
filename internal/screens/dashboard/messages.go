@@ -13,3 +13,8 @@ type SpotRemovedMsg struct {
 	Removed bool
 	Err     error
 }
+
+type URLOpenedMsg struct {
+	URL string
+	Err error
+}

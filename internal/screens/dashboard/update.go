@@ -70,6 +70,8 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			}
 		case "esc":
 			m.selectedIndex = -1
+		case "u":
+			return m, m.openSelectedURLCmd()
 		case "x":
 			if m.selectedIndex >= 0 && m.selectedIndex < len(m.spots) {
 				m.confirmRemoval = true
