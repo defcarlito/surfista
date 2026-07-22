@@ -73,6 +73,29 @@ func TestTypingDoesNotShowAnEmptyResultState(t *testing.T) {
 	}
 }
 
+func TestPendingAndLoadingUseTheSameSearchIndicator(t *testing.T) {
+	t.Parallel()
+
+	model := New(&fakeSearcher{}, &fakeTracker{})
+	model.Input.SetValue("Honolua")
+	model.Pending = true
+	pending := model.resultsView(60)
+
+	model.Pending = false
+	model.Loading = true
+	loading := model.resultsView(60)
+
+	if pending != loading {
+		t.Fatalf("search indicator changed between pending and loading:\npending: %q\nloading: %q", pending, loading)
+	}
+	if !strings.Contains(pending, "Searching Surfline for \"Honolua\"") {
+		t.Fatalf("search indicator does not describe the active search: %q", pending)
+	}
+	if strings.Contains(pending, "Updating results") {
+		t.Fatalf("search indicator still uses the old pending text: %q", pending)
+	}
+}
+
 func TestTypingRunsDebouncedLiveSearch(t *testing.T) {
 	t.Parallel()
 

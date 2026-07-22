@@ -49,9 +49,7 @@ func (m Model) View() string {
 
 func (m Model) resultsView(width int) string {
 	switch {
-	case m.Pending:
-		return ui.SearchEmptyStyle.Width(width).Render("Updating results…")
-	case m.Loading:
+	case m.Pending || m.Loading:
 		return ui.SearchResultStyle.Width(width).Render(
 			fmt.Sprintf("%s Searching Surfline for %q…", m.Spinner.View(), m.Input.Value()),
 		)
