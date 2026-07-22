@@ -7,3 +7,9 @@ type ForecastLoadedMsg struct {
 	Forecast surf.Forecast
 	Err      error
 }
+
+type SpotRemovedMsg struct {
+	SpotID  string
+	Removed bool
+	Err     error
+}

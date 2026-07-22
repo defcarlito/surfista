@@ -112,6 +112,19 @@ var (
 					Bold(true).
 					Foreground(OceanPalette.White)
 
+	DashboardRemovalDialogStyle = lipgloss.NewStyle().
+					Border(lipgloss.RoundedBorder()).
+					BorderForeground(borderColor).
+					Foreground(OceanPalette.White).
+					Padding(1, 2)
+
+	DashboardRemovalBodyStyle = lipgloss.NewStyle().
+					Foreground(OceanPalette.White)
+
+	DashboardRemovalHelpStyle = lipgloss.NewStyle().
+					Faint(true).
+					Foreground(mutedColor)
+
 	DashboardHelpStyle = lipgloss.NewStyle().
 				Faint(true).
 				Foreground(mutedColor)

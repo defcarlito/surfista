@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -17,19 +18,29 @@ type forecastState struct {
 	err      error
 }
 
+type Remover interface {
+	Remove(spotID string) (bool, error)
+}
+
 // Model owns the favorite-spots dashboard and its independently loading
 // forecasts. Forecasts are keyed by Surfline's stable spot ID.
 type Model struct {
-	spots         []surf.Spot
-	forecasts     map[string]forecastState
-	provider      surf.ForecastProvider
-	loadErr       error
-	terminalWidth int
-	selectedIndex int
-	now           func() time.Time
+	spots          []surf.Spot
+	forecasts      map[string]forecastState
+	provider       surf.ForecastProvider
+	remover        Remover
+	loadErr        error
+	terminalWidth  int
+	terminalHeight int
+	selectedIndex  int
+	confirmRemoval bool
+	removing       bool
+	removalSpot    surf.Spot
+	removalErr     error
+	now            func() time.Time
 }
 
-func New(provider surf.ForecastProvider, spots []surf.Spot, loadErr error) Model {
+func New(provider surf.ForecastProvider, remover Remover, spots []surf.Spot, loadErr error) Model {
 	states := make(map[string]forecastState, len(spots))
 	for _, spot := range spots {
 		states[spot.ID] = forecastState{loading: provider != nil}
@@ -38,10 +49,41 @@ func New(provider surf.ForecastProvider, spots []surf.Spot, loadErr error) Model
 		spots:         append([]surf.Spot(nil), spots...),
 		forecasts:     states,
 		provider:      provider,
+		remover:       remover,
 		loadErr:       loadErr,
 		selectedIndex: -1,
 		now:           time.Now,
 	}
+}
+
+func (m Model) ConfirmingRemoval() bool {
+	return m.confirmRemoval
+}
+
+func (m Model) removeCmd(spotID string) tea.Cmd {
+	return func() tea.Msg {
+		if m.remover == nil {
+			return SpotRemovedMsg{SpotID: spotID, Err: errors.New("tracked location storage is unavailable")}
+		}
+		removed, err := m.remover.Remove(spotID)
+		return SpotRemovedMsg{SpotID: spotID, Removed: removed, Err: err}
+	}
+}
+
+func (m *Model) removeSpot(spotID string) {
+	kept := make([]surf.Spot, 0, max(0, len(m.spots)-1))
+	for _, spot := range m.spots {
+		if spot.ID != spotID {
+			kept = append(kept, spot)
+		}
+	}
+	m.spots = kept
+	delete(m.forecasts, spotID)
+	m.selectedIndex = -1
+	m.confirmRemoval = false
+	m.removing = false
+	m.removalSpot = surf.Spot{}
+	m.removalErr = nil
 }
 
 func (m Model) Init() tea.Cmd {

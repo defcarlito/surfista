@@ -29,7 +29,7 @@ func TestInitFetchesFavoriteForecast(t *testing.T) {
 	t.Parallel()
 
 	provider := &fakeForecastProvider{forecast: surf.Forecast{SpotID: "honolua"}}
-	model := New(provider, []surf.Spot{{ID: "honolua", Name: "Honolua Bay"}}, nil)
+	model := New(provider, nil, []surf.Spot{{ID: "honolua", Name: "Honolua Bay"}}, nil)
 	cmd := model.Init()
 	if cmd == nil {
 		t.Fatal("Init returned no forecast command")
@@ -51,7 +51,7 @@ func TestInitFetchesFavoriteForecast(t *testing.T) {
 func TestForecastResultUpdatesOnlyTrackedSpot(t *testing.T) {
 	t.Parallel()
 
-	model := New(nil, []surf.Spot{{ID: "honolua"}}, nil)
+	model := New(nil, nil, []surf.Spot{{ID: "honolua"}}, nil)
 	failure := errors.New("forecast offline")
 	updated, _ := model.Update(ForecastLoadedMsg{SpotID: "honolua", Err: failure})
 	if !errors.Is(updated.forecasts["honolua"].err, failure) {
@@ -87,7 +87,7 @@ func TestViewShowsTodayThroughNextMidnight(t *testing.T) {
 		Rating:    "Good",
 	})
 
-	model := New(nil, []surf.Spot{{ID: "honolua", Name: "Honolua Bay"}}, nil)
+	model := New(nil, nil, []surf.Spot{{ID: "honolua", Name: "Honolua Bay"}}, nil)
 	model.forecasts["honolua"] = forecastState{forecast: forecast}
 	model.now = func() time.Time { return now }
 	model, _ = model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
@@ -140,7 +140,7 @@ func TestNarrowViewKeepsForecastOnSharedAxis(t *testing.T) {
 		})
 	}
 
-	model := New(nil, []surf.Spot{{ID: "honolua", Name: "Honolua Bay"}}, nil)
+	model := New(nil, nil, []surf.Spot{{ID: "honolua", Name: "Honolua Bay"}}, nil)
 	model.forecasts["honolua"] = forecastState{forecast: forecast}
 	model.now = func() time.Time { return now }
 	model, _ = model.Update(tea.WindowSizeMsg{Width: 50, Height: 20})
@@ -170,7 +170,7 @@ func TestNarrowViewKeepsForecastOnSharedAxis(t *testing.T) {
 func TestTimeHeaderIsUnboxedAboveLocationCards(t *testing.T) {
 	t.Parallel()
 
-	model := New(nil, []surf.Spot{{ID: "honolua", Name: "Honolua Bay"}}, nil)
+	model := New(nil, nil, []surf.Spot{{ID: "honolua", Name: "Honolua Bay"}}, nil)
 	model.forecasts["honolua"] = forecastState{forecast: surf.Forecast{SpotID: "honolua"}}
 	model, _ = model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	plain := ansi.Strip(model.View())
@@ -214,7 +214,7 @@ func TestAddStartsForecastForNewFavorite(t *testing.T) {
 	t.Parallel()
 
 	provider := &fakeForecastProvider{}
-	model := New(provider, nil, nil)
+	model := New(provider, nil, nil, nil)
 	cmd := model.Add(surf.Spot{ID: "pine-trees", Name: "Pine Trees"})
 	if cmd == nil {
 		t.Fatal("Add returned no forecast command")
@@ -230,7 +230,7 @@ func TestAddStartsForecastForNewFavorite(t *testing.T) {
 func TestLocationSelectionStartsEmptyAndMovesWithJK(t *testing.T) {
 	t.Parallel()
 
-	model := New(nil, []surf.Spot{
+	model := New(nil, nil, []surf.Spot{
 		{ID: "first", Name: "First"},
 		{ID: "second", Name: "Second"},
 		{ID: "third", Name: "Third"},
@@ -270,7 +270,7 @@ func TestSelectedLocationUsesWhiteBordersThroughout(t *testing.T) {
 	t.Parallel()
 
 	spot := surf.Spot{ID: "honolua", Name: "Honolua Bay"}
-	model := New(nil, []surf.Spot{spot}, nil)
+	model := New(nil, nil, []surf.Spot{spot}, nil)
 	card := model.spotCard(spot, 7, true)
 	lines := strings.Split(card, "\n")
 	innerWidth := 7*len(dashboardHours) + len(dashboardHours) - 1
@@ -326,4 +326,159 @@ func TestSelectedLocationUsesWhiteBordersThroughout(t *testing.T) {
 
 func dashboardKey(code rune) tea.KeyPressMsg {
 	return tea.KeyPressMsg{Code: code, Text: string(code)}
+}
+
+type fakeRemover struct {
+	removed bool
+	err     error
+	spotIDs []string
+}
+
+func (r *fakeRemover) Remove(spotID string) (bool, error) {
+	r.spotIDs = append(r.spotIDs, spotID)
+	return r.removed, r.err
+}
+
+func TestRemoveConfirmationCanBeCancelled(t *testing.T) {
+	t.Parallel()
+
+	remover := &fakeRemover{removed: true}
+	model := New(nil, remover, []surf.Spot{{ID: "honolua", Name: "Honolua Bay"}}, nil)
+	model, _ = model.Update(dashboardKey('x'))
+	if model.confirmRemoval {
+		t.Fatal("x opened removal confirmation without a selected location")
+	}
+
+	model, _ = model.Update(dashboardKey('j'))
+	model, _ = model.Update(dashboardKey('x'))
+	if !model.confirmRemoval || model.removalSpot.ID != "honolua" {
+		t.Fatalf("removal state = %+v, want Honolua confirmation", model.removalSpot)
+	}
+	model, _ = model.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	plain := ansi.Strip(model.View())
+	for _, want := range []string{"Today's surf conditions", "Remove Honolua Bay from tracked locations?", "Enter remove", "Esc cancel"} {
+		if !strings.Contains(plain, want) {
+			t.Fatalf("confirmation view does not contain %q:\n%s", want, plain)
+		}
+	}
+	if !strings.Contains(model.removalDialog(), ui.DashboardSpotStyle.Render("Honolua Bay")) {
+		t.Fatal("confirmation location does not use the dashboard location style")
+	}
+	if !strings.Contains(model.removalDialog(), ui.SuccessStyle.Render("remove")) {
+		t.Fatal("remove action does not use the success style")
+	}
+	if !strings.Contains(model.removalDialog(), ui.ErrorStyle.Render("cancel")) {
+		t.Fatal("cancel action does not use the error style")
+	}
+	assertDialogTextCentered(t, model.removalDialog(), "Remove Honolua Bay from tracked locations?")
+	assertDialogTextCentered(t, model.removalDialog(), "Enter remove • Esc cancel")
+	assertRemovalDialogCentered(t, model)
+
+	model, _ = model.Update(dashboardKey('j'))
+	if model.selectedIndex != 0 {
+		t.Fatalf("selection moved while confirmation was open: %d", model.selectedIndex)
+	}
+	model, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
+	if model.confirmRemoval {
+		t.Fatal("Esc did not close removal confirmation")
+	}
+	if model.selectedIndex != 0 || len(model.spots) != 1 {
+		t.Fatalf("cancel changed dashboard state: selection=%d spots=%v", model.selectedIndex, model.spots)
+	}
+	if len(remover.spotIDs) != 0 {
+		t.Fatalf("cancel called remover with %v", remover.spotIDs)
+	}
+}
+
+func assertDialogTextCentered(t *testing.T, dialog, text string) {
+	t.Helper()
+
+	for _, line := range strings.Split(ansi.Strip(dialog), "\n") {
+		byteIndex := strings.Index(line, text)
+		if byteIndex < 0 {
+			continue
+		}
+		left := ansi.StringWidth(line[:byteIndex])
+		right := ansi.StringWidth(line) - left - ansi.StringWidth(text)
+		if difference := left - right; difference < -1 || difference > 1 {
+			t.Fatalf("%q is not centered: left padding=%d right padding=%d", text, left, right)
+		}
+		return
+	}
+	t.Fatalf("dialog does not contain %q", text)
+}
+
+func assertRemovalDialogCentered(t *testing.T, model Model) {
+	t.Helper()
+
+	dialog := ansi.Strip(model.removalDialog())
+	dialogLines := strings.Split(dialog, "\n")
+	viewLines := strings.Split(ansi.Strip(model.View()), "\n")
+	wantX := (model.terminalWidth - ansi.StringWidth(dialogLines[0])) / 2
+	wantY := (model.terminalHeight - len(dialogLines)) / 2
+	if wantY < 0 || wantY >= len(viewLines) {
+		t.Fatalf("centered dialog row %d is outside rendered view", wantY)
+	}
+	byteIndex := strings.Index(viewLines[wantY], dialogLines[0])
+	if byteIndex < 0 {
+		t.Fatalf("dialog top border is not at centered row %d:\n%s", wantY, ansi.Strip(model.View()))
+	}
+	if gotX := ansi.StringWidth(viewLines[wantY][:byteIndex]); gotX != wantX {
+		t.Fatalf("dialog x = %d, want centered x %d", gotX, wantX)
+	}
+}
+
+func TestConfirmRemoveDeletesTrackedLocationFromDashboard(t *testing.T) {
+	t.Parallel()
+
+	remover := &fakeRemover{removed: true}
+	model := New(nil, remover, []surf.Spot{
+		{ID: "honolua", Name: "Honolua Bay"},
+		{ID: "pine-trees", Name: "Pine Trees"},
+	}, nil)
+	model, _ = model.Update(dashboardKey('j'))
+	model, _ = model.Update(dashboardKey('x'))
+	model, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if cmd == nil || !model.removing {
+		t.Fatal("Enter did not start removal")
+	}
+
+	result := cmd()
+	message, ok := result.(SpotRemovedMsg)
+	if !ok {
+		t.Fatalf("remove command returned %T, want SpotRemovedMsg", result)
+	}
+	model, _ = model.Update(message)
+	if len(remover.spotIDs) != 1 || remover.spotIDs[0] != "honolua" {
+		t.Fatalf("remover calls = %v, want honolua", remover.spotIDs)
+	}
+	if len(model.spots) != 1 || model.spots[0].ID != "pine-trees" {
+		t.Fatalf("spots after removal = %+v, want only Pine Trees", model.spots)
+	}
+	if _, exists := model.forecasts["honolua"]; exists {
+		t.Fatal("removed spot forecast remains in dashboard")
+	}
+	if model.selectedIndex != -1 || model.confirmRemoval {
+		t.Fatalf("removal did not reset selection/modal: selection=%d confirmation=%v", model.selectedIndex, model.confirmRemoval)
+	}
+}
+
+func TestRemoveFailureKeepsLocationAndShowsError(t *testing.T) {
+	t.Parallel()
+
+	remover := &fakeRemover{err: errors.New("disk unavailable")}
+	model := New(nil, remover, []surf.Spot{{ID: "honolua", Name: "Honolua Bay"}}, nil)
+	model, _ = model.Update(dashboardKey('j'))
+	model, _ = model.Update(dashboardKey('x'))
+	model, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	message := cmd().(SpotRemovedMsg)
+	model, _ = model.Update(message)
+
+	if len(model.spots) != 1 || !model.confirmRemoval || model.removalErr == nil {
+		t.Fatalf("failed removal changed state: spots=%v confirmation=%v err=%v", model.spots, model.confirmRemoval, model.removalErr)
+	}
+	plain := ansi.Strip(model.View())
+	if !strings.Contains(plain, "Could not remove: disk unavailable") || !strings.Contains(plain, "Enter retry") {
+		t.Fatalf("failed removal view does not show retry guidance:\n%s", plain)
+	}
 }

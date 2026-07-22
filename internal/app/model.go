@@ -23,8 +23,13 @@ type Model struct {
 	initialForecasts int
 }
 
-func New(searcher surf.SpotSearcher, tracker search.Tracker, forecaster surf.ForecastProvider, tracked []surf.Spot, loadErr error) Model {
-	dashboardModel := dashboard.New(forecaster, tracked, loadErr)
+type Tracker interface {
+	search.Tracker
+	dashboard.Remover
+}
+
+func New(searcher surf.SpotSearcher, tracker Tracker, forecaster surf.ForecastProvider, tracked []surf.Spot, loadErr error) Model {
+	dashboardModel := dashboard.New(forecaster, tracker, tracked, loadErr)
 	initialForecasts := dashboardModel.PendingForecasts()
 	current := homeScreen
 	if initialForecasts > 0 {

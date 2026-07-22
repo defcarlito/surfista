@@ -23,6 +23,10 @@ func (resizeTestTracker) Add(surf.Spot) (bool, error) {
 	return true, nil
 }
 
+func (resizeTestTracker) Remove(string) (bool, error) {
+	return true, nil
+}
+
 func TestWindowSizeReachesSearchBeforeScreenOpens(t *testing.T) {
 	t.Parallel()
 
@@ -100,6 +104,36 @@ func TestDashboardKeysReachDashboardModel(t *testing.T) {
 	updated = updatedModel.(Model)
 	if updated.dashboard.View() != initialView {
 		t.Fatal("Esc did not restore the dashboard's initial unselected view")
+	}
+}
+
+func TestRemovalConfirmationBlocksDashboardNavigation(t *testing.T) {
+	t.Parallel()
+
+	model := New(
+		resizeTestSearcher{},
+		resizeTestTracker{},
+		nil,
+		[]surf.Spot{{ID: "honolua", Name: "Honolua Bay"}},
+		nil,
+	)
+	updatedModel, _ := model.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
+	updated := updatedModel.(Model)
+	updatedModel, _ = updated.Update(tea.KeyPressMsg{Code: 'x', Text: "x"})
+	updated = updatedModel.(Model)
+	if !updated.dashboard.ConfirmingRemoval() {
+		t.Fatal("x did not open removal confirmation")
+	}
+
+	updatedModel, _ = updated.Update(tea.KeyPressMsg{Code: 's', Text: "s"})
+	updated = updatedModel.(Model)
+	if updated.current != homeScreen || !updated.dashboard.ConfirmingRemoval() {
+		t.Fatal("search shortcut escaped the removal confirmation")
+	}
+	updatedModel, _ = updated.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
+	updated = updatedModel.(Model)
+	if updated.current != homeScreen || !updated.dashboard.ConfirmingRemoval() {
+		t.Fatal("quit shortcut escaped the removal confirmation")
 	}
 }
 

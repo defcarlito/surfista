@@ -14,10 +14,12 @@ import (
 )
 
 const (
-	maxDashboardWidth = 114
-	pageMargin        = 2
-	maxSlotWidth      = 10
-	gridBorderWidth   = 10
+	maxDashboardWidth  = 114
+	pageMargin         = 2
+	maxSlotWidth       = 10
+	gridBorderWidth    = 10
+	removalDialogWidth = 48
+	removalDialogFrame = 6
 )
 
 var dashboardHours = [...]int{0, 3, 6, 9, 12, 15, 18, 21, 24}
@@ -37,12 +39,65 @@ func (m Model) View() string {
 		sections = append(sections, "", m.forecastTable(width))
 	}
 
-	sections = append(sections, "", ui.DashboardHelpStyle.Width(width).Render("j/k select • Esc unselect • s or / search Surfline • q quit"))
+	sections = append(sections, "", ui.DashboardHelpStyle.Width(width).Render("j/k select • x remove • Esc unselect • s or / search Surfline • q quit"))
 	content := lipgloss.JoinVertical(lipgloss.Left, sections...)
-	if m.terminalWidth <= 0 {
-		return content
+	if m.terminalWidth > 0 {
+		content = lipgloss.PlaceHorizontal(m.terminalWidth, lipgloss.Center, content)
 	}
-	return lipgloss.PlaceHorizontal(m.terminalWidth, lipgloss.Center, content)
+	if m.confirmRemoval {
+		return m.removalOverlay(content)
+	}
+	return content
+}
+
+func (m Model) removalOverlay(dashboard string) string {
+	dialog := m.removalDialog()
+	if m.terminalWidth <= 0 || m.terminalHeight <= 0 {
+		return lipgloss.JoinVertical(lipgloss.Center, dashboard, "", dialog)
+	}
+
+	canvas := lipgloss.NewCanvas(m.terminalWidth, m.terminalHeight)
+	compositor := lipgloss.NewCompositor(
+		lipgloss.NewLayer(dashboard).Z(0),
+		lipgloss.NewLayer(dialog).
+			X(max(0, (m.terminalWidth-lipgloss.Width(dialog))/2)).
+			Y(max(0, (m.terminalHeight-lipgloss.Height(dialog))/2)).
+			Z(1),
+	)
+	return canvas.Compose(compositor).Render()
+}
+
+func (m Model) removalDialog() string {
+	width := removalDialogWidth
+	if m.terminalWidth > 0 {
+		width = max(1, min(width, m.terminalWidth-removalDialogFrame))
+	}
+	contentWidth := max(1, width-removalDialogFrame)
+
+	status := ui.DashboardRemovalHelpStyle.Render("Enter ") +
+		ui.SuccessStyle.Render("remove") +
+		ui.DashboardRemovalHelpStyle.Render(" • Esc ") +
+		ui.ErrorStyle.Render("cancel")
+	if m.removing {
+		status = ui.DashboardRemovalHelpStyle.Render("Removing…")
+	} else if m.removalErr != nil {
+		status = ui.ErrorStyle.Render("Could not remove: "+m.removalErr.Error()) +
+			"\n" + ui.DashboardRemovalHelpStyle.Render("Enter retry • Esc ") +
+			ui.ErrorStyle.Render("cancel")
+	}
+	status = lipgloss.NewStyle().Width(contentWidth).Align(lipgloss.Center).Render(status)
+	question := ui.DashboardRemovalBodyStyle.Render("Remove ") +
+		ui.DashboardSpotStyle.Render(m.removalSpot.Name) +
+		ui.DashboardRemovalBodyStyle.Render(" from tracked locations?")
+	question = lipgloss.NewStyle().Width(contentWidth).Align(lipgloss.Center).Render(question)
+
+	content := lipgloss.JoinVertical(
+		lipgloss.Center,
+		question,
+		"",
+		status,
+	)
+	return ui.DashboardRemovalDialogStyle.Width(width).Render(content)
 }
 
 func (m Model) contentWidth() int {

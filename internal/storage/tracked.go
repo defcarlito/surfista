@@ -67,6 +67,36 @@ func (s *TrackedStore) Add(spot surf.Spot) (bool, error) {
 	return true, nil
 }
 
+// Remove deletes the tracked spot with the given stable provider ID. It
+// returns true only when a saved spot was removed.
+func (s *TrackedStore) Remove(spotID string) (bool, error) {
+	spotID = strings.TrimSpace(spotID)
+	if spotID == "" {
+		return false, errors.New("cannot remove a spot without an ID")
+	}
+
+	spots, err := s.Load()
+	if err != nil {
+		return false, err
+	}
+	kept := make([]surf.Spot, 0, len(spots))
+	removed := false
+	for _, spot := range spots {
+		if spot.ID == spotID {
+			removed = true
+			continue
+		}
+		kept = append(kept, spot)
+	}
+	if !removed {
+		return false, nil
+	}
+	if err := s.save(kept); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 func (s *TrackedStore) save(spots []surf.Spot) error {
 	dir := filepath.Dir(s.path)
 	if err := os.MkdirAll(dir, 0o700); err != nil {

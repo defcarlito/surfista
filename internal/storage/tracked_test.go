@@ -60,3 +60,44 @@ func TestTrackedStoreAddSaveAndPreventDuplicate(t *testing.T) {
 		t.Fatalf("saved JSON = %+v, want spot %q", persisted, spot.ID)
 	}
 }
+
+func TestTrackedStoreRemovePersistsRemainingSpots(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "tracked.json")
+	store := NewTrackedStore(path)
+	first := surf.Spot{ID: "first", Name: "First"}
+	second := surf.Spot{ID: "second", Name: "Second"}
+	if _, err := store.Add(first); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Add(second); err != nil {
+		t.Fatal(err)
+	}
+
+	removed, err := store.Remove(first.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !removed {
+		t.Fatal("Remove() = false, want true")
+	}
+	loaded, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded) != 1 || loaded[0] != second {
+		t.Fatalf("Load() after Remove() = %+v, want only second spot", loaded)
+	}
+
+	removed, err = store.Remove("not-tracked")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removed {
+		t.Fatal("Remove() missing spot = true, want false")
+	}
+	if _, err := store.Remove("  "); err == nil {
+		t.Fatal("Remove() blank ID returned no error")
+	}
+}

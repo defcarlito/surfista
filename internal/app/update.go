@@ -39,6 +39,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		switch m.current {
 		case homeScreen:
+			if m.dashboard.ConfirmingRemoval() {
+				break
+			}
 			switch key.String() {
 			case "s", "/":
 				m.current = searchScreen
