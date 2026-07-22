@@ -352,15 +352,15 @@ func (m Model) removalDialog() string {
 	}
 	contentWidth := max(1, width-removalDialogFrame)
 
-	status := ui.DashboardRemovalHelpStyle.Render("Enter ") +
+	status := ui.DashboardRemovalHelpStyle.Render("enter ") +
 		ui.SuccessStyle.Render("remove") +
-		ui.DashboardRemovalHelpStyle.Render(" • Esc ") +
+		ui.DashboardRemovalHelpStyle.Render(" • esc ") +
 		ui.ErrorStyle.Render("cancel")
 	if m.removing {
 		status = ui.DashboardRemovalHelpStyle.Render("Removing…")
 	} else if m.removalErr != nil {
 		status = ui.ErrorStyle.Render("Could not remove: "+m.removalErr.Error()) +
-			"\n" + ui.DashboardRemovalHelpStyle.Render("Enter retry • Esc ") +
+			"\n" + ui.DashboardRemovalHelpStyle.Render("enter retry • esc ") +
 			ui.ErrorStyle.Render("cancel")
 	}
 	status = lipgloss.NewStyle().Width(contentWidth).Align(lipgloss.Center).Render(status)

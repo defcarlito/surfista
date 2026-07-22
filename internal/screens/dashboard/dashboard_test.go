@@ -804,7 +804,7 @@ func TestRemoveConfirmationCanBeCancelled(t *testing.T) {
 	}
 	model, _ = model.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	plain := ansi.Strip(model.View())
-	for _, want := range []string{"Today's surf conditions", "Remove Honolua Bay from tracked locations?", "Enter remove", "Esc cancel"} {
+	for _, want := range []string{"Today's surf conditions", "Remove Honolua Bay from tracked locations?", "enter remove", "esc cancel"} {
 		if !strings.Contains(plain, want) {
 			t.Fatalf("confirmation view does not contain %q:\n%s", want, plain)
 		}
@@ -819,7 +819,7 @@ func TestRemoveConfirmationCanBeCancelled(t *testing.T) {
 		t.Fatal("cancel action does not use the error style")
 	}
 	assertDialogTextCentered(t, model.removalDialog(), "Remove Honolua Bay from tracked locations?")
-	assertDialogTextCentered(t, model.removalDialog(), "Enter remove • Esc cancel")
+	assertDialogTextCentered(t, model.removalDialog(), "enter remove • esc cancel")
 	assertRemovalDialogCentered(t, model)
 
 	model, _ = model.Update(dashboardKey('j'))
@@ -926,7 +926,7 @@ func TestRemoveFailureKeepsLocationAndShowsError(t *testing.T) {
 		t.Fatalf("failed removal changed state: spots=%v confirmation=%v err=%v", model.spots, model.confirmRemoval, model.removalErr)
 	}
 	plain := ansi.Strip(model.View())
-	if !strings.Contains(plain, "Could not remove: disk unavailable") || !strings.Contains(plain, "Enter retry") {
+	if !strings.Contains(plain, "Could not remove: disk unavailable") || !strings.Contains(plain, "enter retry") {
 		t.Fatalf("failed removal view does not show retry guidance:\n%s", plain)
 	}
 }
