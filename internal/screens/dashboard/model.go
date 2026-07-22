@@ -18,6 +18,12 @@ type forecastState struct {
 	err      error
 }
 
+type forecastDetailsState struct {
+	details surf.ForecastDetails
+	loading bool
+	err     error
+}
+
 type Remover interface {
 	Remove(spotID string) (bool, error)
 }
@@ -25,31 +31,39 @@ type Remover interface {
 // Model owns the favorite-spots dashboard and its independently loading
 // forecasts. Forecasts are keyed by Surfline's stable spot ID.
 type Model struct {
-	spots          []surf.Spot
-	forecasts      map[string]forecastState
-	provider       surf.ForecastProvider
-	remover        Remover
-	loadErr        error
-	terminalWidth  int
-	terminalHeight int
-	selectedIndex  int
-	scrollOffset   int
-	confirmRemoval bool
-	removing       bool
-	removalSpot    surf.Spot
-	removalErr     error
-	openURL        func(string) error
-	sortMode       SortMode
-	sortStore      SortStore
-	addedOrder     map[string]int
-	nextAddedOrder int
-	now            func() time.Time
+	spots           []surf.Spot
+	forecasts       map[string]forecastState
+	provider        surf.ForecastProvider
+	detailsProvider surf.ForecastDetailsProvider
+	details         map[string]forecastDetailsState
+	remover         Remover
+	loadErr         error
+	terminalWidth   int
+	terminalHeight  int
+	selectedIndex   int
+	scrollOffset    int
+	confirmRemoval  bool
+	removing        bool
+	removalSpot     surf.Spot
+	removalErr      error
+	detailsOpen     bool
+	detailsSpot     surf.Spot
+	detailsScroll   int
+	openURL         func(string) error
+	sortMode        SortMode
+	sortStore       SortStore
+	addedOrder      map[string]int
+	nextAddedOrder  int
+	now             func() time.Time
 }
 
 func New(provider surf.ForecastProvider, remover Remover, spots []surf.Spot, loadErr error) Model {
+	detailsProvider, _ := provider.(surf.ForecastDetailsProvider)
 	states := make(map[string]forecastState, len(spots))
+	detailStates := make(map[string]forecastDetailsState, len(spots))
 	for _, spot := range spots {
 		states[spot.ID] = forecastState{loading: provider != nil}
+		detailStates[spot.ID] = forecastDetailsState{loading: detailsProvider != nil}
 	}
 	addedOrder := make(map[string]int, len(spots))
 	for index, spot := range spots {
@@ -68,18 +82,20 @@ func New(provider surf.ForecastProvider, remover Remover, spots []surf.Spot, loa
 	}
 
 	model := Model{
-		spots:          append([]surf.Spot(nil), spots...),
-		forecasts:      states,
-		provider:       provider,
-		remover:        remover,
-		loadErr:        loadErr,
-		selectedIndex:  -1,
-		openURL:        systemOpenURL,
-		sortMode:       sortMode,
-		sortStore:      sortStore,
-		addedOrder:     addedOrder,
-		nextAddedOrder: len(spots),
-		now:            time.Now,
+		spots:           append([]surf.Spot(nil), spots...),
+		forecasts:       states,
+		provider:        provider,
+		detailsProvider: detailsProvider,
+		details:         detailStates,
+		remover:         remover,
+		loadErr:         loadErr,
+		selectedIndex:   -1,
+		openURL:         systemOpenURL,
+		sortMode:        sortMode,
+		sortStore:       sortStore,
+		addedOrder:      addedOrder,
+		nextAddedOrder:  len(spots),
+		now:             time.Now,
 	}
 	model.applySort()
 	return model
@@ -112,6 +128,7 @@ func (m *Model) removeSpot(spotID string) {
 	}
 	m.spots = kept
 	delete(m.forecasts, spotID)
+	delete(m.details, spotID)
 	delete(m.addedOrder, spotID)
 	m.clampScrollOffset()
 	m.selectedIndex = -1
@@ -122,9 +139,10 @@ func (m *Model) removeSpot(spotID string) {
 }
 
 func (m Model) Init() tea.Cmd {
-	commands := make([]tea.Cmd, 0, len(m.spots))
+	commands := make([]tea.Cmd, 0, len(m.spots)*2)
 	for _, spot := range m.spots {
 		commands = append(commands, m.fetchForecast(spot.ID))
+		commands = append(commands, m.fetchForecastDetails(spot.ID))
 	}
 	return tea.Batch(commands...)
 }
@@ -133,6 +151,11 @@ func (m Model) Init() tea.Cmd {
 func (m Model) PendingForecasts() int {
 	pending := 0
 	for _, state := range m.forecasts {
+		if state.loading {
+			pending++
+		}
+	}
+	for _, state := range m.details {
 		if state.loading {
 			pending++
 		}
@@ -151,8 +174,9 @@ func (m *Model) Add(spot surf.Spot) tea.Cmd {
 	m.addedOrder[spot.ID] = m.nextAddedOrder
 	m.nextAddedOrder++
 	m.forecasts[spot.ID] = forecastState{loading: m.provider != nil}
+	m.details[spot.ID] = forecastDetailsState{loading: m.detailsProvider != nil}
 	m.applySort()
-	return m.fetchForecast(spot.ID)
+	return tea.Batch(m.fetchForecast(spot.ID), m.fetchForecastDetails(spot.ID))
 }
 
 func (m Model) fetchForecast(spotID string) tea.Cmd {
@@ -164,5 +188,17 @@ func (m Model) fetchForecast(spotID string) tea.Cmd {
 		defer cancel()
 		forecast, err := m.provider.Forecast(ctx, spotID)
 		return ForecastLoadedMsg{SpotID: spotID, Forecast: forecast, Err: err}
+	}
+}
+
+func (m Model) fetchForecastDetails(spotID string) tea.Cmd {
+	if m.detailsProvider == nil {
+		return nil
+	}
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), forecastTimeout)
+		defer cancel()
+		details, err := m.detailsProvider.ForecastDetails(ctx, spotID)
+		return ForecastDetailsLoadedMsg{SpotID: spotID, Details: details, Err: err}
 	}
 }

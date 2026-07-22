@@ -72,6 +72,33 @@ func TestInitialForecastsKeepLoadingScreenUntilAllResolve(t *testing.T) {
 	}
 }
 
+func TestInitialLoadingWaitsForPrefetchedForecastDetails(t *testing.T) {
+	t.Parallel()
+
+	model := New(
+		resizeTestSearcher{},
+		resizeTestTracker{},
+		&appTestFullForecastProvider{},
+		[]surf.Spot{{ID: "honolua"}},
+		nil,
+	)
+	if model.current != loadingScreen || model.initialForecasts != 2 {
+		t.Fatalf("initial state = screen %v loads %d, want loading screen with 2 loads", model.current, model.initialForecasts)
+	}
+
+	updatedModel, _ := model.Update(dashboard.ForecastLoadedMsg{SpotID: "honolua"})
+	updated := updatedModel.(Model)
+	if updated.current != loadingScreen {
+		t.Fatal("dashboard opened before detail prefetch completed")
+	}
+
+	updatedModel, _ = updated.Update(dashboard.ForecastDetailsLoadedMsg{SpotID: "honolua"})
+	updated = updatedModel.(Model)
+	if updated.current != homeScreen {
+		t.Fatal("dashboard did not open after forecast and detail prefetch completed")
+	}
+}
+
 func TestNoInitialForecastsStartsOnDashboard(t *testing.T) {
 	t.Parallel()
 
@@ -180,4 +207,14 @@ type appTestForecastProvider struct{}
 
 func (*appTestForecastProvider) Forecast(context.Context, string) (surf.Forecast, error) {
 	return surf.Forecast{}, nil
+}
+
+type appTestFullForecastProvider struct{}
+
+func (*appTestFullForecastProvider) Forecast(context.Context, string) (surf.Forecast, error) {
+	return surf.Forecast{}, nil
+}
+
+func (*appTestFullForecastProvider) ForecastDetails(context.Context, string) (surf.ForecastDetails, error) {
+	return surf.ForecastDetails{}, nil
 }

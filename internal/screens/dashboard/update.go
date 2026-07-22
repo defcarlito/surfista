@@ -21,6 +21,14 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			err:      msg.Err,
 		}
 		m.applySort()
+	case ForecastDetailsLoadedMsg:
+		if _, tracked := m.forecasts[msg.SpotID]; !tracked {
+			return m, nil
+		}
+		m.details[msg.SpotID] = forecastDetailsState{
+			details: msg.Details,
+			err:     msg.Err,
+		}
 	case SpotRemovedMsg:
 		if !m.confirmRemoval || msg.SpotID != m.removalSpot.ID {
 			return m, nil

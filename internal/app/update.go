@@ -20,7 +20,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(searchCmd, dashboardCmd, loadingCmd)
 	}
 
-	if _, ok := msg.(dashboard.ForecastLoadedMsg); ok {
+	switch msg.(type) {
+	case dashboard.ForecastLoadedMsg, dashboard.ForecastDetailsLoadedMsg:
 		m.dashboard, _ = m.dashboard.Update(msg)
 		if m.current == loadingScreen {
 			pending := m.dashboard.PendingForecasts()

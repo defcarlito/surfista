@@ -15,14 +15,22 @@ import (
 )
 
 type fakeForecastProvider struct {
-	forecast surf.Forecast
-	err      error
-	spotIDs  []string
+	forecast      surf.Forecast
+	err           error
+	spotIDs       []string
+	details       surf.ForecastDetails
+	detailsErr    error
+	detailSpotIDs []string
 }
 
 func (p *fakeForecastProvider) Forecast(_ context.Context, spotID string) (surf.Forecast, error) {
 	p.spotIDs = append(p.spotIDs, spotID)
 	return p.forecast, p.err
+}
+
+func (p *fakeForecastProvider) ForecastDetails(_ context.Context, spotID string) (surf.ForecastDetails, error) {
+	p.detailSpotIDs = append(p.detailSpotIDs, spotID)
+	return p.details, p.detailsErr
 }
 
 func TestInitFetchesFavoriteForecast(t *testing.T) {
@@ -35,10 +43,17 @@ func TestInitFetchesFavoriteForecast(t *testing.T) {
 		t.Fatal("Init returned no forecast command")
 	}
 
-	message := cmd()
-	loaded, ok := message.(ForecastLoadedMsg)
-	if !ok {
-		t.Fatalf("message = %T, want ForecastLoadedMsg", message)
+	messages := commandMessages(t, cmd)
+	var loaded ForecastLoadedMsg
+	found := false
+	for _, message := range messages {
+		if candidate, ok := message.(ForecastLoadedMsg); ok {
+			loaded = candidate
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("messages = %T, want ForecastLoadedMsg", messages)
 	}
 	if loaded.SpotID != "honolua" || loaded.Forecast.SpotID != "honolua" || loaded.Err != nil {
 		t.Fatalf("message = %+v", loaded)
@@ -250,8 +265,17 @@ func TestAddStartsForecastForNewFavorite(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("Add returned no forecast command")
 	}
-	if message := cmd(); message.(ForecastLoadedMsg).SpotID != "pine-trees" {
-		t.Fatalf("message = %+v", message)
+	foundForecast := false
+	for _, message := range commandMessages(t, cmd) {
+		if loaded, ok := message.(ForecastLoadedMsg); ok {
+			foundForecast = true
+			if loaded.SpotID != "pine-trees" {
+				t.Fatalf("forecast message = %+v", loaded)
+			}
+		}
+	}
+	if !foundForecast {
+		t.Fatal("Add command did not return a forecast message")
 	}
 	if len(model.spots) != 1 || !model.forecasts["pine-trees"].loading {
 		t.Fatalf("dashboard state = %+v", model)
@@ -569,6 +593,25 @@ func TestSelectedLocationUsesWhiteBordersThroughout(t *testing.T) {
 
 func dashboardKey(code rune) tea.KeyPressMsg {
 	return tea.KeyPressMsg{Code: code, Text: string(code)}
+}
+
+func commandMessages(t *testing.T, cmd tea.Cmd) []tea.Msg {
+	t.Helper()
+	if cmd == nil {
+		return nil
+	}
+	message := cmd()
+	batch, ok := message.(tea.BatchMsg)
+	if !ok {
+		return []tea.Msg{message}
+	}
+	messages := make([]tea.Msg, 0, len(batch))
+	for _, command := range batch {
+		if command != nil {
+			messages = append(messages, command())
+		}
+	}
+	return messages
 }
 
 type fakeRemover struct {
