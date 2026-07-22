@@ -300,49 +300,77 @@ func TestDashboardStartsWithForecastDatesAndHours(t *testing.T) {
 	}
 }
 
-func TestDashboardPositionsExactSunriseAndSunsetAboveHours(t *testing.T) {
+func TestDashboardShowsSelectedLocationSunlightOnlyInDetails(t *testing.T) {
 	t.Parallel()
 
 	const width = 80
-	now := time.Date(2026, time.July, 22, 15, 0, 0, 0, time.UTC)
-	spot := surf.Spot{ID: "honolua", Name: "Honolua Bay"}
-	model := New(nil, nil, []surf.Spot{spot}, nil)
+	now := time.Date(2026, time.July, 23, 2, 0, 0, 0, time.UTC)
+	firstSpot := surf.Spot{ID: "first", Name: "First Spot"}
+	detailsSpot := surf.Spot{ID: "honolua", Name: "Honolua Bay"}
+	model := New(nil, nil, []surf.Spot{firstSpot, detailsSpot}, nil)
 	model.now = func() time.Time { return now }
-	model.forecasts[spot.ID] = forecastState{forecast: surf.Forecast{
-		SpotID: spot.ID,
+	model.forecasts[firstSpot.ID] = forecastState{forecast: surf.Forecast{
+		SpotID: firstSpot.ID,
+		Slots:  []surf.ForecastSlot{{Timestamp: time.Date(2026, time.July, 23, 6, 0, 0, 0, time.UTC)}},
+	}}
+	model.details[firstSpot.ID] = forecastDetailsState{details: surf.ForecastDetails{
+		SpotID: firstSpot.ID,
+		Sunlight: []surf.SunlightDay{{
+			Sunrise: time.Date(2026, time.July, 23, 4, 44, 0, 0, time.UTC),
+			Sunset:  time.Date(2026, time.July, 23, 21, 1, 0, 0, time.UTC),
+		}},
+	}}
+	model.forecasts[detailsSpot.ID] = forecastState{forecast: surf.Forecast{
+		SpotID:    detailsSpot.ID,
+		UTCOffset: -10 * time.Hour,
 		Slots: []surf.ForecastSlot{
-			{Timestamp: time.Date(2026, time.July, 22, 6, 0, 0, 0, time.UTC)},
-			{Timestamp: time.Date(2026, time.July, 23, 6, 0, 0, 0, time.UTC)},
+			{Timestamp: time.Date(2026, time.July, 22, 16, 0, 0, 0, time.UTC)},
+			{Timestamp: time.Date(2026, time.July, 23, 16, 0, 0, 0, time.UTC)},
 		},
 	}}
-	model.details[spot.ID] = forecastDetailsState{details: surf.ForecastDetails{
-		SpotID: spot.ID,
+	model.details[detailsSpot.ID] = forecastDetailsState{details: surf.ForecastDetails{
+		SpotID: detailsSpot.ID,
 		Sunlight: []surf.SunlightDay{
 			{
-				Sunrise: time.Date(2026, time.July, 22, 6, 30, 0, 0, time.UTC),
-				Sunset:  time.Date(2026, time.July, 22, 20, 12, 0, 0, time.UTC),
+				Sunrise: time.Date(2026, time.July, 22, 16, 30, 0, 0, time.UTC),
+				Sunset:  time.Date(2026, time.July, 23, 6, 12, 0, 0, time.UTC),
 			},
 			{
-				Sunrise: time.Date(2026, time.July, 23, 6, 31, 0, 0, time.UTC),
-				Sunset:  time.Date(2026, time.July, 23, 20, 11, 0, 0, time.UTC),
+				Sunrise: time.Date(2026, time.July, 23, 16, 31, 0, 0, time.UTC),
+				Sunset:  time.Date(2026, time.July, 24, 6, 11, 0, 0, time.UTC),
 			},
 		},
 	}}
 
+	dashboardAnnotation := strings.Split(ansi.Strip(model.forecastHeader(width)), "\n")[0]
+	if !strings.Contains(dashboardAnnotation, "7/23") || !strings.Contains(dashboardAnnotation, "7/24") {
+		t.Fatalf("dashboard annotation row is missing its dates:\n%s", dashboardAnnotation)
+	}
+	for _, hidden := range []string{"↑4:44a", "↓9:01p", "↑6:30a", "↓8:12p"} {
+		if strings.Contains(dashboardAnnotation, hidden) {
+			t.Fatalf("general dashboard shows location-specific sunlight marker %q:\n%s", hidden, dashboardAnnotation)
+		}
+	}
+
+	model.detailsOpen = true
+	model.detailsSpot = detailsSpot
 	header := model.forecastHeader(width)
 	annotation := strings.Split(ansi.Strip(header), "\n")[0]
 	if !strings.Contains(annotation, "7/22") || !strings.Contains(annotation, "7/23") ||
 		!strings.Contains(annotation, "↑6:30a") || !strings.Contains(annotation, "↓8:12p") {
-		t.Fatalf("forecast annotation row is missing dates or daylight times:\n%s", annotation)
+		t.Fatalf("details annotation row is missing selected-location dates or daylight times:\n%s", annotation)
+	}
+	if strings.Contains(annotation, "↑4:44a") || strings.Contains(annotation, "↓9:01p") {
+		t.Fatalf("details annotation row uses another location's daylight times:\n%s", annotation)
 	}
 
 	slotWidth := dashboardSlotWidth(width)
 	cardWidth := slotWidth*len(dashboardHours) + gridBorderWidth
 	headerOffset := (width - cardWidth) / 2
-	if got, want := sunlightPivotColumn(annotation, "↑6:30a"), headerOffset+dashboardTimePosition(model.details[spot.ID].details.Sunlight[0].Sunrise, 0, slotWidth); got != want {
+	if got, want := sunlightPivotColumn(annotation, "↑6:30a"), headerOffset+dashboardTimePosition(model.details[detailsSpot.ID].details.Sunlight[0].Sunrise, -10*time.Hour, slotWidth); got != want {
 		t.Fatalf("sunrise time pivot column = %d, want exact-time column %d:\n%s", got, want, annotation)
 	}
-	if got, want := sunlightPivotColumn(annotation, "↓8:12p"), headerOffset+dashboardTimePosition(model.details[spot.ID].details.Sunlight[0].Sunset, 0, slotWidth); got != want {
+	if got, want := sunlightPivotColumn(annotation, "↓8:12p"), headerOffset+dashboardTimePosition(model.details[detailsSpot.ID].details.Sunlight[0].Sunset, -10*time.Hour, slotWidth); got != want {
 		t.Fatalf("sunset time pivot column = %d, want exact-time column %d:\n%s", got, want, annotation)
 	}
 	styledSunrise := ui.DashboardSubtitleStyle.Render("↑6:30a")
@@ -352,8 +380,9 @@ func TestDashboardPositionsExactSunriseAndSunsetAboveHours(t *testing.T) {
 
 	model.forecastDayOffset = 1
 	nextAnnotation := strings.Split(ansi.Strip(model.forecastHeader(width)), "\n")[0]
-	if !strings.Contains(nextAnnotation, "↑6:31a") || !strings.Contains(nextAnnotation, "↓8:11p") || strings.Contains(nextAnnotation, "↑6:30a") {
-		t.Fatalf("next-day header does not use that day's daylight times:\n%s", nextAnnotation)
+	if !strings.Contains(nextAnnotation, "7/23") || !strings.Contains(nextAnnotation, "7/24") ||
+		!strings.Contains(nextAnnotation, "↑6:31a") || !strings.Contains(nextAnnotation, "↓8:11p") || strings.Contains(nextAnnotation, "↑6:30a") {
+		t.Fatalf("next-day details header does not use the selected location's next-day data:\n%s", nextAnnotation)
 	}
 }
 

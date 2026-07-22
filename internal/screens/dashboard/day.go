@@ -45,6 +45,12 @@ func (m *Model) clampForecastDayOffset() {
 }
 
 func (m Model) dashboardForecastDate(dayOffset int) time.Time {
+	if m.detailsOpen {
+		forecast := m.forecasts[m.detailsSpot.ID].forecast
+		if len(forecast.Slots) > 0 {
+			return localDate(m.now(), forecast.UTCOffset).AddDate(0, 0, dayOffset)
+		}
+	}
 	for _, spot := range m.spots {
 		forecast := m.forecasts[spot.ID].forecast
 		if len(forecast.Slots) > 0 {
