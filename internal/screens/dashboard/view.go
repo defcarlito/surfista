@@ -88,6 +88,13 @@ func (m Model) dashboardFooter(width int) string {
 func (m Model) sortStatus(width int) string {
 	render := func(mode SortMode) string {
 		label := ui.DashboardSortStyle.Render("sorting by: " + mode.label())
+		if mode == SortConditionHighToLow {
+			context := "best right now"
+			if m.forecastDayOffset > 0 {
+				context = "best overall for " + formatDashboardDate(m.dashboardForecastDate(m.forecastDayOffset))
+			}
+			label += " " + ui.DashboardSubtitleStyle.Render(context)
+		}
 		return lipgloss.NewStyle().Width(width).Render(label)
 	}
 	status := render(m.sortMode)
@@ -209,25 +216,12 @@ func (m Model) dashboardSunlightDay() (surf.SunlightDay, time.Duration, bool) {
 		if len(forecast.Slots) == 0 {
 			continue
 		}
-		targetDate := localDate(m.now(), forecast.UTCOffset).AddDate(0, 0, m.forecastDayOffset)
-		for _, day := range m.details[spot.ID].details.Sunlight {
-			reference := firstSunlightTime(day)
-			if !reference.IsZero() && localDate(reference, forecast.UTCOffset).Equal(targetDate) {
-				return day, forecast.UTCOffset, true
-			}
+		if day, ok := sunlightForLocalDay(m.details[spot.ID].details, m.now(), forecast.UTCOffset, m.forecastDayOffset); ok {
+			return day, forecast.UTCOffset, true
 		}
 		return surf.SunlightDay{}, 0, false
 	}
 	return surf.SunlightDay{}, 0, false
-}
-
-func firstSunlightTime(day surf.SunlightDay) time.Time {
-	for _, candidate := range []time.Time{day.Sunrise, day.Sunset, day.Dawn, day.Dusk} {
-		if !candidate.IsZero() {
-			return candidate
-		}
-	}
-	return time.Time{}
 }
 
 func dashboardTimePosition(timestamp time.Time, utcOffset time.Duration, slotWidth int) int {

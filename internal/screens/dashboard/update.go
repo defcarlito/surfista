@@ -44,6 +44,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.details[msg.SpotID] = state
 		if msg.Err == nil {
 			m.saveForecastCache(msg.SpotID)
+			if m.sortMode == SortConditionHighToLow && m.forecastDayOffset > 0 {
+				m.applySort()
+			}
 		}
 	case SpotRemovedMsg:
 		if !m.confirmRemoval || msg.SpotID != m.removalSpot.ID {

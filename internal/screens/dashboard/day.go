@@ -1,6 +1,10 @@
 package dashboard
 
-import "time"
+import (
+	"time"
+
+	"surfista/internal/surf"
+)
 
 func (m Model) maxForecastDayOffset() int {
 	maximum := 0
@@ -60,4 +64,24 @@ func localDate(value time.Time, utcOffset time.Duration) time.Time {
 
 func calendarDayOffset(start, end time.Time) int {
 	return int(end.Sub(start) / (24 * time.Hour))
+}
+
+func sunlightForLocalDay(details surf.ForecastDetails, now time.Time, utcOffset time.Duration, dayOffset int) (surf.SunlightDay, bool) {
+	targetDate := localDate(now, utcOffset).AddDate(0, 0, dayOffset)
+	for _, day := range details.Sunlight {
+		reference := firstSunlightTime(day)
+		if !reference.IsZero() && localDate(reference, utcOffset).Equal(targetDate) {
+			return day, true
+		}
+	}
+	return surf.SunlightDay{}, false
+}
+
+func firstSunlightTime(day surf.SunlightDay) time.Time {
+	for _, candidate := range []time.Time{day.Sunrise, day.Sunset, day.Dawn, day.Dusk} {
+		if !candidate.IsZero() {
+			return candidate
+		}
+	}
+	return time.Time{}
 }
