@@ -64,6 +64,7 @@ func TestEnterOpensCurrentForecastDetailsAndEscapeCloses(t *testing.T) {
 		}
 	}
 	model, _ = model.Update(dashboardKey('j'))
+	dashboardFooterHeight := lipgloss.Height(model.dashboardFooter(model.contentWidth()))
 
 	model, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if !model.ShowingDetails() || cmd != nil {
@@ -71,6 +72,13 @@ func TestEnterOpensCurrentForecastDetailsAndEscapeCloses(t *testing.T) {
 	}
 	if !reflect.DeepEqual(provider.detailSpotIDs, []string{"honolua"}) {
 		t.Fatalf("detail provider calls = %v", provider.detailSpotIDs)
+	}
+	detailsFooter := model.dashboardFooter(model.contentWidth())
+	if strings.TrimSpace(ansi.Strip(detailsFooter)) != "" {
+		t.Fatalf("details view did not blank the main dashboard footer: %q", ansi.Strip(detailsFooter))
+	}
+	if got := lipgloss.Height(detailsFooter); got != dashboardFooterHeight {
+		t.Fatalf("blank details footer height = %d, want preserved height %d", got, dashboardFooterHeight)
 	}
 	renderedDialog := model.detailsDialog()
 	if !strings.Contains(renderedDialog, ui.DashboardCurrentHourStyle.Render("12p")) {
@@ -110,6 +118,11 @@ func TestEnterOpensCurrentForecastDetailsAndEscapeCloses(t *testing.T) {
 	if strings.Contains(plain, "current slot") || strings.Contains(plain, "CONDITION") {
 		t.Fatalf("detail header contains removed labels:\n%s", plain)
 	}
+	for _, hidden := range []string{"s sort", "x remove", "q quit"} {
+		if strings.Contains(plain, hidden) {
+			t.Fatalf("details view still shows main dashboard control %q:\n%s", hidden, plain)
+		}
+	}
 	assertDetailPanelsShareRow(t, plain)
 
 	model, _ = model.Update(dashboardKey('j'))
@@ -119,6 +132,12 @@ func TestEnterOpensCurrentForecastDetailsAndEscapeCloses(t *testing.T) {
 	model, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
 	if model.ShowingDetails() || model.selectedIndex != 0 {
 		t.Fatalf("escape did not close details while preserving selection: open=%v selection=%d", model.ShowingDetails(), model.selectedIndex)
+	}
+	closed := ansi.Strip(model.View())
+	for _, restored := range []string{"s sort", "x remove", "q quit"} {
+		if !strings.Contains(closed, restored) {
+			t.Fatalf("closing details did not restore main dashboard control %q:\n%s", restored, closed)
+		}
 	}
 }
 

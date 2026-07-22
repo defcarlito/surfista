@@ -75,6 +75,9 @@ func (m Model) dashboardFooter(width int) string {
 	if m.CanOpenSelectionURL() {
 		helpText = dashboardURLHelp
 	}
+	if m.detailsOpen {
+		helpText = ""
+	}
 	help := ui.DashboardHelpStyle.Width(width).Render(helpText)
 	maxHelpHeight := max(
 		lipgloss.Height(ui.DashboardHelpStyle.Width(width).Render(dashboardBrowseHelp)),
