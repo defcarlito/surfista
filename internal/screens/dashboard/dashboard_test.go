@@ -108,12 +108,16 @@ func TestViewShowsTodayThroughNextMidnight(t *testing.T) {
 	if count := strings.Count(plain, "12a"); count != 2 {
 		t.Fatalf("12a header count = %d, want start and end only:\n%s", count, plain)
 	}
-	if strings.Contains(rendered, "\x1b[48") {
-		t.Fatal("current forecast cell still uses a background highlight")
+	card := model.spotCard(model.spots[0], 7, false)
+	if strings.Contains(card, "\x1b[48") {
+		t.Fatal("forecast card still uses a current-time background highlight")
 	}
-	currentOutline := ui.DashboardCurrentBorderStyle.Render(strings.Repeat("─", 7))
-	if !strings.Contains(rendered, currentOutline) {
-		t.Fatal("current forecast cell does not use the highlighted outline")
+	currentHour := ui.DashboardCurrentHourStyle.Width(7).MaxWidth(7).Render("3p")
+	if !strings.Contains(rendered, currentHour) {
+		t.Fatal("time header does not highlight the viewer's current 3pm slot")
+	}
+	if !strings.Contains(plain, "now") {
+		t.Fatal("time header does not label the current slot as now")
 	}
 }
 
@@ -337,12 +341,12 @@ func TestLocationViewportScrollsWhileHeaderAndControlsStayPinned(t *testing.T) {
 		{ID: "third", Name: "Third Location"},
 		{ID: "fourth", Name: "Fourth Location"},
 	}, nil)
-	model, _ = model.Update(tea.WindowSizeMsg{Width: 80, Height: 22})
+	model, _ = model.Update(tea.WindowSizeMsg{Width: 80, Height: 23})
 
 	plain := ansi.Strip(model.View())
 	lines := strings.Split(plain, "\n")
-	if len(lines) != 22 {
-		t.Fatalf("view height = %d, want terminal height 22:\n%s", len(lines), plain)
+	if len(lines) != 23 {
+		t.Fatalf("view height = %d, want terminal height 23:\n%s", len(lines), plain)
 	}
 	if !strings.Contains(lines[0], "Today's surf conditions") {
 		t.Fatalf("title is not pinned to the first line: %q", lines[0])
@@ -350,8 +354,11 @@ func TestLocationViewportScrollsWhileHeaderAndControlsStayPinned(t *testing.T) {
 	if !strings.Contains(lines[2], "12a") || !strings.Contains(lines[2], "3a") {
 		t.Fatalf("time header is not pinned near the top: %q", lines[2])
 	}
-	if strings.TrimSpace(lines[3]) != "" {
-		t.Fatalf("expected one blank row between the times and top arrow slot: %q", lines[3])
+	if !strings.Contains(lines[3], "now") {
+		t.Fatalf("current-time label is not directly below the time header: %q", lines[3])
+	}
+	if strings.TrimSpace(lines[4]) != "" {
+		t.Fatalf("expected one blank row between the current-time label and top arrow slot: %q", lines[4])
 	}
 	if !strings.Contains(lines[len(lines)-2], "↑/k ↓/j navigate") || strings.TrimSpace(lines[len(lines)-1]) != "" {
 		t.Fatalf("controls are not one row above the bottom: %q / %q", lines[len(lines)-2], lines[len(lines)-1])
@@ -387,8 +394,8 @@ func TestLocationViewportScrollsWhileHeaderAndControlsStayPinned(t *testing.T) {
 	if strings.Contains(plain, "First Location") || strings.Contains(plain, "Fourth Location") {
 		t.Fatalf("scrolled viewport shows a location outside its window:\n%s", plain)
 	}
-	if arrowLine := standaloneIndicatorLine(lines, "↑"); arrowLine != 4 {
-		t.Fatalf("up arrow line = %d, want below the time-header gap at 4:\n%s", arrowLine, plain)
+	if arrowLine := standaloneIndicatorLine(lines, "↑"); arrowLine != 5 {
+		t.Fatalf("up arrow line = %d, want below the time-header gap at 5:\n%s", arrowLine, plain)
 	}
 	upLine := standaloneIndicatorLine(lines, "↑")
 	downLine := standaloneIndicatorLine(lines, "↓")
@@ -535,7 +542,7 @@ func TestSelectedLocationUsesWhiteBordersThroughout(t *testing.T) {
 	}
 	bottom.WriteString("╯")
 	wantSegmentedBorder := ui.DashboardSelectedBorderStyle.Render(bottom.String())
-	if got := segmentedBorder("╰", "┴", "╯", 7, -1, true); got != wantSegmentedBorder {
+	if got := segmentedBorder("╰", "┴", "╯", 7, true); got != wantSegmentedBorder {
 		t.Fatalf("selected forecast grid border was not entirely white: %q", got)
 	}
 
@@ -543,7 +550,7 @@ func TestSelectedLocationUsesWhiteBordersThroughout(t *testing.T) {
 	wantGridLine := ui.DashboardSelectedBorderStyle.Render("│") + cells[0] +
 		ui.DashboardSelectedBorderStyle.Render("│") + cells[1] +
 		ui.DashboardSelectedBorderStyle.Render("│")
-	if got := segmentedLine(cells, -1, true); got != wantGridLine {
+	if got := segmentedLine(cells, true); got != wantGridLine {
 		t.Fatalf("selected forecast grid cells were not outlined in white: %q", got)
 	}
 }

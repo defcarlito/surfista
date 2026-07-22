@@ -110,12 +110,17 @@ var (
 	DashboardSlotStyle = lipgloss.NewStyle().
 				Align(lipgloss.Center)
 
+	DashboardCurrentHourStyle = DashboardSlotStyle.
+					Bold(true).
+					Foreground(OceanPalette.White).
+					Background(borderColor)
+
+	DashboardNowStyle = lipgloss.NewStyle().
+				Foreground(OceanPalette.Foam).
+				Align(lipgloss.Center)
+
 	DashboardBorderStyle = lipgloss.NewStyle().
 				Foreground(borderColor)
-
-	DashboardCurrentBorderStyle = lipgloss.NewStyle().
-					Bold(true).
-					Foreground(OceanPalette.Foam)
 
 	DashboardSelectedBorderStyle = lipgloss.NewStyle().
 					Bold(true).
