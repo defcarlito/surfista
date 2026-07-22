@@ -43,7 +43,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				break
 			}
 			switch key.String() {
-			case "s", "/":
+			case "/":
 				if m.dashboard.HasSelection() {
 					break
 				}

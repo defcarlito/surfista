@@ -303,10 +303,13 @@ func TestDashboardHelpShowsOnlyAvailableActions(t *testing.T) {
 	model := New(nil, nil, []surf.Spot{{ID: "honolua", Name: "Honolua Bay"}}, nil)
 	model, _ = model.Update(tea.WindowSizeMsg{Width: 80, Height: 20})
 	plain := ansi.Strip(model.View())
-	for _, want := range []string{"↑/k ↓/j navigate", "s or / search Surfline", "q quit"} {
+	for _, want := range []string{"↑/k ↓/j navigate", "/ search Surfline", "q quit"} {
 		if !strings.Contains(plain, want) {
 			t.Fatalf("unselected dashboard help does not contain %q:\n%s", want, plain)
 		}
+	}
+	if strings.Contains(plain, "s or /") {
+		t.Fatalf("unselected dashboard help still offers s as a search shortcut:\n%s", plain)
 	}
 	for _, unavailable := range []string{"x remove", "Esc unselect"} {
 		if strings.Contains(plain, unavailable) {

@@ -107,7 +107,7 @@ func TestDashboardKeysReachDashboardModel(t *testing.T) {
 	}
 }
 
-func TestDashboardSearchShortcutsRequireNoSelection(t *testing.T) {
+func TestDashboardSearchShortcutRequiresNoSelection(t *testing.T) {
 	t.Parallel()
 
 	model := New(
@@ -123,12 +123,10 @@ func TestDashboardSearchShortcutsRequireNoSelection(t *testing.T) {
 		t.Fatal("j did not select a dashboard location")
 	}
 
-	for _, shortcut := range []rune{'s', '/'} {
-		updatedModel, _ = updated.Update(tea.KeyPressMsg{Code: shortcut, Text: string(shortcut)})
-		updated = updatedModel.(Model)
-		if updated.current != homeScreen || !updated.dashboard.HasSelection() {
-			t.Fatalf("%q opened search or cleared selection while a location was selected", shortcut)
-		}
+	updatedModel, _ = updated.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
+	updated = updatedModel.(Model)
+	if updated.current != homeScreen || !updated.dashboard.HasSelection() {
+		t.Fatal("/ opened search or cleared selection while a location was selected")
 	}
 
 	updatedModel, _ = updated.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
@@ -138,8 +136,13 @@ func TestDashboardSearchShortcutsRequireNoSelection(t *testing.T) {
 	}
 	updatedModel, _ = updated.Update(tea.KeyPressMsg{Code: 's', Text: "s"})
 	updated = updatedModel.(Model)
+	if updated.current != homeScreen {
+		t.Fatal("s still opened search after its shortcut was removed")
+	}
+	updatedModel, _ = updated.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
+	updated = updatedModel.(Model)
 	if updated.current != searchScreen {
-		t.Fatal("s did not open search after the dashboard selection was cleared")
+		t.Fatal("/ did not open search after the dashboard selection was cleared")
 	}
 }
 
@@ -161,7 +164,7 @@ func TestRemovalConfirmationBlocksDashboardNavigation(t *testing.T) {
 		t.Fatal("x did not open removal confirmation")
 	}
 
-	updatedModel, _ = updated.Update(tea.KeyPressMsg{Code: 's', Text: "s"})
+	updatedModel, _ = updated.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
 	updated = updatedModel.(Model)
 	if updated.current != homeScreen || !updated.dashboard.ConfirmingRemoval() {
 		t.Fatal("search shortcut escaped the removal confirmation")
