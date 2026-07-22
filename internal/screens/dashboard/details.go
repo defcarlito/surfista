@@ -96,7 +96,7 @@ func (m Model) detailsDialog() string {
 	}
 	rowBlock := lipgloss.JoinVertical(lipgloss.Left, rowViews...)
 
-	status := m.detailsStatus(offset > 0, end < len(rows), contentWidth)
+	status := m.detailsStatus(contentWidth)
 	content := lipgloss.JoinVertical(
 		lipgloss.Center,
 		title,
@@ -111,15 +111,8 @@ func (m Model) detailsDialog() string {
 	return ui.DashboardDetailDialogStyle.Width(width).Render(content)
 }
 
-func (m Model) detailsStatus(canScrollUp, canScrollDown bool, width int) string {
-	actions := make([]string, 0, 5)
-	actions = append(actions, "←/→/h/l day")
-	if canScrollUp {
-		actions = append(actions, "↑/k scroll up")
-	}
-	if canScrollDown {
-		actions = append(actions, "↓/j scroll down")
-	}
+func (m Model) detailsStatus(width int) string {
+	actions := []string{"←/→/h/l day", "↑/↓/j/k"}
 	if _, ok := m.detailsBrowserURL(); ok {
 		actions = append(actions, "u open")
 	}

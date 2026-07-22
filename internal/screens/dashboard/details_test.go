@@ -330,7 +330,7 @@ func TestDetailsRowsScrollWithJKWithoutChangingSelection(t *testing.T) {
 	}
 	initialOffset := model.detailsScroll
 	plain := ansi.Strip(model.detailsDialog())
-	if !strings.Contains(plain, "now 12p") || !strings.Contains(plain, "↓/j scroll down") || !strings.Contains(plain, "↑/k scroll up") {
+	if !strings.Contains(plain, "now 12p") || !strings.Contains(plain, "↑/↓/j/k") || strings.Contains(plain, "scroll up") || strings.Contains(plain, "scroll down") {
 		t.Fatalf("initial detail viewport is missing current-row context or controls:\n%s", plain)
 	}
 
@@ -342,19 +342,21 @@ func TestDetailsRowsScrollWithJKWithoutChangingSelection(t *testing.T) {
 	if model.detailsScroll != initialOffset || model.selectedIndex != 0 {
 		t.Fatalf("k changed state to offset=%d selection=%d, want offset=%d selection=0", model.detailsScroll, model.selectedIndex, initialOffset)
 	}
-	for strings.Contains(ansi.Strip(model.detailsDialog()), "↓/j scroll down") {
+	rows := model.detailsForecastRows()
+	visible := model.detailsVisibleRowCount(len(rows))
+	for model.detailsScroll < max(0, len(rows)-visible) {
 		model, _ = model.Update(dashboardKey('j'))
 	}
 	bottom := ansi.Strip(model.detailsDialog())
-	if strings.Contains(bottom, "↓/j scroll down") || !strings.Contains(bottom, "↑/k scroll up") {
-		t.Fatalf("bottom viewport shows invalid controls:\n%s", bottom)
+	if !strings.Contains(bottom, "↑/↓/j/k") || strings.Contains(bottom, "scroll up") || strings.Contains(bottom, "scroll down") {
+		t.Fatalf("bottom viewport changed its compact scroll controls:\n%s", bottom)
 	}
 	for model.detailsScroll > 0 {
 		model, _ = model.Update(dashboardKey('k'))
 	}
 	top := ansi.Strip(model.detailsDialog())
-	if strings.Contains(top, "↑/k scroll up") || !strings.Contains(top, "↓/j scroll down") {
-		t.Fatalf("top viewport shows invalid controls:\n%s", top)
+	if !strings.Contains(top, "↑/↓/j/k") || strings.Contains(top, "scroll up") || strings.Contains(top, "scroll down") {
+		t.Fatalf("top viewport changed its compact scroll controls:\n%s", top)
 	}
 }
 
