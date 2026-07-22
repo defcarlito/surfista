@@ -20,7 +20,7 @@ const (
 	gridBorderWidth         = 10
 	removalDialogWidth      = 48
 	removalDialogFrame      = 6
-	spaciousLayoutMinHeight = 12
+	spaciousLayoutMinHeight = 13
 )
 
 var dashboardHours = [...]int{0, 3, 6, 9, 12, 15, 18, 21, 24}
@@ -82,10 +82,22 @@ func (m Model) dashboardFooter(width int) string {
 		lipgloss.Height(ui.DashboardHelpStyle.Width(width).Render(dashboardURLHelp)),
 	)
 	help = fitHeight(help, maxHelpHeight)
+	sortIndicator := m.sortIndicator(width)
 	if m.terminalHeight > 0 && m.terminalHeight < spaciousLayoutMinHeight {
-		return lipgloss.JoinVertical(lipgloss.Left, help, "")
+		return lipgloss.JoinVertical(lipgloss.Left, sortIndicator, help, "")
 	}
-	return lipgloss.JoinVertical(lipgloss.Left, "", help, "")
+	return lipgloss.JoinVertical(lipgloss.Left, "", sortIndicator, help, "")
+}
+
+func (m Model) sortIndicator(width int) string {
+	render := func(mode SortMode) string {
+		label := ui.DashboardSortStyle.Render("sorting by: " + mode.label())
+		control := ui.DashboardHelpStyle.Render(" • s cycle sort")
+		return lipgloss.NewStyle().Width(width).Render(label + control)
+	}
+	indicator := render(m.sortMode)
+	maxHeight := max(lipgloss.Height(render(SortTimeAdded)), lipgloss.Height(render(SortConditionHighToLow)))
+	return fitHeight(indicator, maxHeight)
 }
 
 func (m Model) dashboardBody(width, height int) string {

@@ -18,3 +18,8 @@ type URLOpenedMsg struct {
 	URL string
 	Err error
 }
+
+type SortModeSavedMsg struct {
+	Mode SortMode
+	Err  error
+}

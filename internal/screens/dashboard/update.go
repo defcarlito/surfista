@@ -20,7 +20,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			forecast: msg.Forecast,
 			err:      msg.Err,
 		}
-		m.ensureSelectedVisible()
+		m.applySort()
 	case SpotRemovedMsg:
 		if !m.confirmRemoval || msg.SpotID != m.removalSpot.ID {
 			return m, nil
@@ -70,6 +70,8 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			}
 		case "esc":
 			m.selectedIndex = -1
+		case "s":
+			return m, m.cycleSort()
 		case "u":
 			return m, m.openSelectedURLCmd()
 		case "x":

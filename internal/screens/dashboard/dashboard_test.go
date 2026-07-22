@@ -344,12 +344,12 @@ func TestLocationViewportScrollsWhileHeaderAndControlsStayPinned(t *testing.T) {
 		{ID: "third", Name: "Third Location"},
 		{ID: "fourth", Name: "Fourth Location"},
 	}, nil)
-	model, _ = model.Update(tea.WindowSizeMsg{Width: 80, Height: 23})
+	model, _ = model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 
 	plain := ansi.Strip(model.View())
 	lines := strings.Split(plain, "\n")
-	if len(lines) != 23 {
-		t.Fatalf("view height = %d, want terminal height 23:\n%s", len(lines), plain)
+	if len(lines) != 24 {
+		t.Fatalf("view height = %d, want terminal height 24:\n%s", len(lines), plain)
 	}
 	if !strings.Contains(lines[0], "Today's surf conditions") {
 		t.Fatalf("title is not pinned to the first line: %q", lines[0])
@@ -366,6 +366,9 @@ func TestLocationViewportScrollsWhileHeaderAndControlsStayPinned(t *testing.T) {
 	if !strings.Contains(lines[len(lines)-2], "↑/k ↓/j navigate") || strings.TrimSpace(lines[len(lines)-1]) != "" {
 		t.Fatalf("controls are not one row above the bottom: %q / %q", lines[len(lines)-2], lines[len(lines)-1])
 	}
+	if !strings.Contains(lines[len(lines)-3], "sorting by: time added") || !strings.Contains(lines[len(lines)-3], "s cycle sort") {
+		t.Fatalf("sort indicator is not directly above the controls: %q", lines[len(lines)-3])
+	}
 	for _, want := range []string{"First Location", "Second Location"} {
 		if !strings.Contains(plain, want) {
 			t.Fatalf("initial viewport does not contain %q:\n%s", want, plain)
@@ -376,8 +379,8 @@ func TestLocationViewportScrollsWhileHeaderAndControlsStayPinned(t *testing.T) {
 			t.Fatalf("initial viewport unexpectedly contains %q:\n%s", hidden, plain)
 		}
 	}
-	if arrowLine := standaloneIndicatorLine(lines, "↓"); arrowLine != len(lines)-4 {
-		t.Fatalf("down arrow line = %d, want bottom of location viewport at %d:\n%s", arrowLine, len(lines)-4, plain)
+	if arrowLine := standaloneIndicatorLine(lines, "↓"); arrowLine != len(lines)-5 {
+		t.Fatalf("down arrow line = %d, want bottom of location viewport at %d:\n%s", arrowLine, len(lines)-5, plain)
 	}
 	if standaloneIndicatorLine(lines, "↑") >= 0 {
 		t.Fatalf("initial viewport unexpectedly contains an up indicator:\n%s", plain)
@@ -456,11 +459,11 @@ func TestLocationViewportReflowsAroundSelectionAfterResize(t *testing.T) {
 		t.Fatalf("large viewport state = selection %d offset %d, want selection 2 offset 0", model.selectedIndex, model.scrollOffset)
 	}
 
-	model, _ = model.Update(tea.WindowSizeMsg{Width: 80, Height: 10})
+	model, _ = model.Update(tea.WindowSizeMsg{Width: 80, Height: 11})
 	plain := ansi.Strip(model.View())
 	lines := strings.Split(plain, "\n")
-	if len(lines) != 10 {
-		t.Fatalf("resized view height = %d, want 10:\n%s", len(lines), plain)
+	if len(lines) != 11 {
+		t.Fatalf("resized view height = %d, want 11:\n%s", len(lines), plain)
 	}
 	if model.scrollOffset == 0 || !strings.Contains(plain, "Third Location") {
 		t.Fatalf("resize did not scroll the selected third location into view: offset=%d\n%s", model.scrollOffset, plain)
@@ -470,6 +473,9 @@ func TestLocationViewportReflowsAroundSelectionAfterResize(t *testing.T) {
 	}
 	if !strings.Contains(lines[len(lines)-2], "↑/k ↓/j navigate") || strings.TrimSpace(lines[len(lines)-1]) != "" {
 		t.Fatalf("compact layout did not keep controls at the bottom:\n%s", plain)
+	}
+	if !strings.Contains(lines[len(lines)-3], "sorting by: time added") {
+		t.Fatalf("compact layout did not keep sort indicator above controls:\n%s", plain)
 	}
 }
 

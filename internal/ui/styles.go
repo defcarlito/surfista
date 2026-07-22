@@ -143,6 +143,9 @@ var (
 				Faint(true).
 				Foreground(mutedColor)
 
+	DashboardSortStyle = lipgloss.NewStyle().
+				Foreground(OceanPalette.White)
+
 	DashboardScrollIndicatorStyle = lipgloss.NewStyle().
 					Foreground(primaryColor).
 					Align(lipgloss.Center)

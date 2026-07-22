@@ -39,6 +39,10 @@ type Model struct {
 	removalSpot    surf.Spot
 	removalErr     error
 	openURL        func(string) error
+	sortMode       SortMode
+	sortStore      SortStore
+	addedOrder     map[string]int
+	nextAddedOrder int
 	now            func() time.Time
 }
 
@@ -47,16 +51,38 @@ func New(provider surf.ForecastProvider, remover Remover, spots []surf.Spot, loa
 	for _, spot := range spots {
 		states[spot.ID] = forecastState{loading: provider != nil}
 	}
-	return Model{
-		spots:         append([]surf.Spot(nil), spots...),
-		forecasts:     states,
-		provider:      provider,
-		remover:       remover,
-		loadErr:       loadErr,
-		selectedIndex: -1,
-		openURL:       systemOpenURL,
-		now:           time.Now,
+	addedOrder := make(map[string]int, len(spots))
+	for index, spot := range spots {
+		addedOrder[spot.ID] = index
 	}
+
+	sortMode := SortTimeAdded
+	var sortStore SortStore
+	if candidate, ok := remover.(SortStore); ok {
+		sortStore = candidate
+		if persisted, err := candidate.LoadSortMode(); err == nil {
+			if loadedMode, valid := parseSortMode(persisted); valid {
+				sortMode = loadedMode
+			}
+		}
+	}
+
+	model := Model{
+		spots:          append([]surf.Spot(nil), spots...),
+		forecasts:      states,
+		provider:       provider,
+		remover:        remover,
+		loadErr:        loadErr,
+		selectedIndex:  -1,
+		openURL:        systemOpenURL,
+		sortMode:       sortMode,
+		sortStore:      sortStore,
+		addedOrder:     addedOrder,
+		nextAddedOrder: len(spots),
+		now:            time.Now,
+	}
+	model.applySort()
+	return model
 }
 
 func (m Model) ConfirmingRemoval() bool {
@@ -86,6 +112,7 @@ func (m *Model) removeSpot(spotID string) {
 	}
 	m.spots = kept
 	delete(m.forecasts, spotID)
+	delete(m.addedOrder, spotID)
 	m.clampScrollOffset()
 	m.selectedIndex = -1
 	m.confirmRemoval = false
@@ -121,7 +148,10 @@ func (m *Model) Add(spot surf.Spot) tea.Cmd {
 		}
 	}
 	m.spots = append(m.spots, spot)
+	m.addedOrder[spot.ID] = m.nextAddedOrder
+	m.nextAddedOrder++
 	m.forecasts[spot.ID] = forecastState{loading: m.provider != nil}
+	m.applySort()
 	return m.fetchForecast(spot.ID)
 }
 
