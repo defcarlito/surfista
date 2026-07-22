@@ -122,12 +122,85 @@ func TestEnterOpensCurrentForecastDetailsAndEscapeCloses(t *testing.T) {
 	}
 }
 
+func TestDetailsShowEveryHourAndMarkExactCurrentHour(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.July, 21, 14, 30, 0, 0, time.UTC)
+	forecast := surf.Forecast{SpotID: "honolua"}
+	for hour := 0; hour <= 24; hour++ {
+		forecast.Slots = append(forecast.Slots, surf.ForecastSlot{
+			Timestamp: time.Date(2026, time.July, 21, hour, 0, 0, 0, time.UTC),
+			Rating:    "Fair",
+		})
+	}
+
+	model := New(nil, nil, []surf.Spot{{ID: "honolua", Name: "Honolua Bay"}}, nil)
+	model.now = func() time.Time { return now }
+	model.forecasts["honolua"] = forecastState{forecast: forecast}
+	model.details["honolua"] = forecastDetailsState{details: surf.ForecastDetails{SpotID: "honolua"}}
+	model.detailsSpot = model.spots[0]
+
+	rows := model.detailsForecastRows()
+	wantLabels := []string{
+		"12a", "1a", "2a", "3a", "4a", "5a", "6a", "7a", "8a", "9a", "10a", "11a",
+		"12p", "1p", "2p", "3p", "4p", "5p", "6p", "7p", "8p", "9p", "10p", "11p", "12a",
+	}
+	if len(rows) != len(wantLabels) {
+		t.Fatalf("detail rows = %d, want %d hourly rows", len(rows), len(wantLabels))
+	}
+	for index, want := range wantLabels {
+		if rows[index].timeLabel != want {
+			t.Fatalf("row %d label = %q, want %q", index, rows[index].timeLabel, want)
+		}
+		if rows[index].current != (want == "2p") {
+			t.Fatalf("row %q current = %v, want %v", want, rows[index].current, want == "2p")
+		}
+	}
+	if !isCurrentDashboardHour(12, now) || isCurrentDashboardHour(15, now) {
+		t.Fatal("dashboard no longer groups 2pm into its 12pm three-hour slot")
+	}
+}
+
+func TestDetailsCurrentHourUsesTerminalClockInsteadOfSpotOffset(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.July, 22, 0, 43, 0, 0, time.UTC)
+	offset := -1 * time.Hour
+	forecast := surf.Forecast{SpotID: "honolua", UTCOffset: offset}
+	for hour := 0; hour <= 24; hour++ {
+		localWallTime := time.Date(2026, time.July, 21, hour, 0, 0, 0, time.UTC)
+		forecast.Slots = append(forecast.Slots, surf.ForecastSlot{
+			Timestamp: localWallTime.Add(-offset),
+			Rating:    "Fair",
+		})
+	}
+
+	model := New(nil, nil, []surf.Spot{{ID: "honolua", Name: "Honolua Bay"}}, nil)
+	model.now = func() time.Time { return now }
+	model.forecasts["honolua"] = forecastState{forecast: forecast}
+	model.details["honolua"] = forecastDetailsState{details: surf.ForecastDetails{SpotID: "honolua"}}
+	model.detailsSpot = model.spots[0]
+
+	rows := model.detailsForecastRows()
+	if len(rows) == 0 {
+		t.Fatal("detail rows are empty")
+	}
+	for _, row := range rows {
+		if row.current && row.timeLabel != "12a" {
+			t.Fatalf("current detail row = %q, want 12a", row.timeLabel)
+		}
+	}
+	if !rows[0].current || rows[0].timeLabel != "12a" {
+		t.Fatalf("first detail row = %+v, want current 12a row", rows[0])
+	}
+}
+
 func TestDetailsRowsScrollWithJKWithoutChangingSelection(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, time.July, 21, 12, 30, 0, 0, time.UTC)
 	forecast := surf.Forecast{SpotID: "honolua"}
-	for hour := 0; hour <= 24; hour += 3 {
+	for hour := 0; hour <= 24; hour++ {
 		forecast.Slots = append(forecast.Slots, surf.ForecastSlot{
 			Timestamp:  time.Date(2026, time.July, 21, hour, 0, 0, 0, time.UTC),
 			Rating:     "Fair",

@@ -174,16 +174,17 @@ func (m Model) detailsForecastRows() []forecastDetailRow {
 	for _, slot := range detailsState.details.Slots {
 		detailsByTimestamp[slot.Timestamp.Unix()] = slot
 	}
-	current, hasCurrent := m.currentForecastSlot(m.detailsSpot.ID)
-
-	forecastSlots := slotsForLocalDay(forecastState.forecast, m.now())
+	now := m.now()
+	forecastSlots := slotsForLocalDay(forecastState.forecast, now)
 	rows := make([]forecastDetailRow, 0, len(forecastSlots))
+	localNow := now.UTC().Add(forecastState.forecast.UTCOffset)
+	currentHour := now.Hour()
 	for _, slot := range forecastSlots {
 		localSlot := slot.Timestamp.UTC().Add(forecastState.forecast.UTCOffset)
 		hour := localSlot.Hour()
-		localNow := m.now().UTC().Add(forecastState.forecast.UTCOffset)
 		sy, sm, sd := localSlot.Date()
 		ny, nm, nd := localNow.Date()
+		current := sy == ny && sm == nm && sd == nd && localSlot.Hour() == currentHour
 		if sy != ny || sm != nm || sd != nd {
 			hour = 24
 		}
@@ -193,7 +194,7 @@ func (m Model) detailsForecastRows() []forecastDetailRow {
 			details:   detail,
 			hasDetail: hasDetail,
 			timeLabel: formatDashboardHour(hour),
-			current:   hasCurrent && slot.Timestamp.Equal(current.Timestamp),
+			current:   current,
 		})
 	}
 	return rows
@@ -226,16 +227,6 @@ func (m *Model) clampDetailsScroll() {
 	rows := m.detailsForecastRows()
 	visible := m.detailsVisibleRowCount(len(rows))
 	m.detailsScroll = min(max(0, m.detailsScroll), max(0, len(rows)-visible))
-}
-
-func (m Model) currentForecastSlot(spotID string) (surf.ForecastSlot, bool) {
-	state, ok := m.forecasts[spotID]
-	if !ok || state.loading || state.err != nil {
-		return surf.ForecastSlot{}, false
-	}
-	currentHour := m.now().Hour() / 3 * 3
-	slot, ok := slotsByHour(state.forecast, m.now())[currentHour]
-	return slot, ok
 }
 
 func detailCellWidth(contentWidth int) int {

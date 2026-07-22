@@ -20,10 +20,10 @@ const surfistaUserAgent = "surfista/0.1"
 
 var ErrEmptySpotID = errors.New("spot ID is empty")
 
-// SurflineForecastProvider reads Surfline's anonymous three-hour wave and
-// rating feeds. These are undocumented website services, so their response
-// details remain private to this package and the base URL is injectable for
-// deterministic tests.
+// SurflineForecastProvider reads Surfline's anonymous hourly forecast feeds.
+// These are undocumented website services, so their response details remain
+// private to this package and the base URL is injectable for deterministic
+// tests.
 type SurflineForecastProvider struct {
 	baseURL *url.URL
 	client  *http.Client
@@ -294,7 +294,7 @@ func (p *SurflineForecastProvider) getForecast(ctx context.Context, kind, spotID
 	// Surfline's one-day response ends at 9pm. Request the following day so
 	// the dashboard can include the next-midnight boundary, then filter there.
 	params.Set("days", "2")
-	params.Set("intervalHours", "3")
+	params.Set("intervalHours", "1")
 	if kind == "wave" {
 		params.Set("maxHeights", "false")
 	}
