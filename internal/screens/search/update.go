@@ -38,7 +38,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.Pending = false
 		m.HasSearched = true
 		m.Err = nil
-		m.Results = msg.Spots
+		m.Results = deduplicateSpotsByURL(msg.Spots)
 		m.Cursor = 0
 		return m, nil
 

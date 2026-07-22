@@ -183,6 +183,31 @@ func TestSuccessfulSearchUsesCommandAndTypedResult(t *testing.T) {
 	}
 }
 
+func TestSearchResultsDeduplicateNormalizedURLs(t *testing.T) {
+	t.Parallel()
+
+	model := New(&fakeSearcher{}, &fakeTracker{})
+	model.activeRequestID = 1
+	spots := []surf.Spot{
+		{ID: "first", Name: "First", URL: "https://www.surfline.com/surf-report/honolua-bay/5842041f4e65fad6a7708de4"},
+		{ID: "duplicate", Name: "Duplicate", URL: "https://WWW.SURFLINE.COM/surf-report/honolua-bay/5842041f4e65fad6a7708de4/?source=search#forecast"},
+		{ID: "different", Name: "Different", URL: "https://www.surfline.com/surf-report/honoli-i/5842041f4e65fad6a7708dec"},
+		{ID: "no-url-one", Name: "No URL One"},
+		{ID: "no-url-two", Name: "No URL Two"},
+	}
+
+	updated, _ := model.Update(SearchResultsMsg{RequestID: 1, Spots: spots})
+	if len(updated.Results) != 4 {
+		t.Fatalf("deduplicated results = %+v, want 4 entries", updated.Results)
+	}
+	wantIDs := []string{"first", "different", "no-url-one", "no-url-two"}
+	for index, wantID := range wantIDs {
+		if got := updated.Results[index].ID; got != wantID {
+			t.Fatalf("result %d ID = %q, want %q", index, got, wantID)
+		}
+	}
+}
+
 func TestSearchErrorAndStaleResponse(t *testing.T) {
 	t.Parallel()
 
