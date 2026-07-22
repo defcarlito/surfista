@@ -136,6 +136,25 @@ func TestViewShowsTodayThroughNextMidnight(t *testing.T) {
 	}
 }
 
+func TestDashboardHeaderCentersTitleAndRightAlignsDate(t *testing.T) {
+	t.Parallel()
+
+	const width = 80
+	const title = "Today's surf conditions"
+	model := New(nil, nil, nil, nil)
+	model.now = func() time.Time {
+		return time.Date(2026, time.July, 22, 12, 0, 0, 0, time.Local)
+	}
+
+	line := ansi.Strip(model.dashboardTitleLine(width))
+	if titleStart := strings.Index(line, title); titleStart != (width-len(title))/2 {
+		t.Fatalf("title starts at %d, want %d: %q", titleStart, (width-len(title))/2, line)
+	}
+	if !strings.HasSuffix(line, "7/22") {
+		t.Fatalf("date is not aligned to the right edge: %q", line)
+	}
+}
+
 func TestHeightUsesFeetInsteadOfBodyRelation(t *testing.T) {
 	t.Parallel()
 

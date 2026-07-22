@@ -61,13 +61,24 @@ func (m Model) View() string {
 
 func (m Model) dashboardHeader(width int) string {
 	sections := []string{
-		ui.DashboardSubtitleStyle.Width(width).Render("Today's surf conditions"),
+		m.dashboardTitleLine(width),
 	}
 	if m.terminalHeight <= 0 || m.terminalHeight >= spaciousLayoutMinHeight {
 		sections = append(sections, "")
 	}
 	sections = append(sections, m.forecastHeader(width), "")
 	return lipgloss.JoinVertical(lipgloss.Left, sections...)
+}
+
+func (m Model) dashboardTitleLine(width int) string {
+	title := ui.DashboardSubtitleStyle.Render("Today's surf conditions")
+	now := m.now()
+	date := ui.DashboardSubtitleStyle.Render(fmt.Sprintf("%d/%d", now.Month(), now.Day()))
+	canvas := lipgloss.NewCanvas(width, 1)
+	return canvas.Compose(lipgloss.NewCompositor(
+		lipgloss.NewLayer(title).X(max(0, (width-lipgloss.Width(title))/2)),
+		lipgloss.NewLayer(date).X(max(0, width-lipgloss.Width(date))),
+	)).Render()
 }
 
 func (m Model) dashboardFooter(width int) string {
