@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
+
 	"surfista/internal/surf"
 )
 
@@ -128,5 +130,45 @@ func TestUDoesNothingForInvalidSelectedURL(t *testing.T) {
 	}
 	if _, cmd := model.Update(dashboardKey('u')); cmd != nil {
 		t.Fatal("u returned an open command for an invalid selected URL")
+	}
+}
+
+func TestUOpensLocationURLFromDetails(t *testing.T) {
+	t.Parallel()
+
+	const targetURL = "https://www.surfline.com/surf-report/honolua-bay/id"
+	model := New(nil, nil, []surf.Spot{{ID: "honolua", Name: "Honolua Bay", URL: targetURL}}, nil)
+	var openedURL string
+	model.openURL = func(value string) error {
+		openedURL = value
+		return nil
+	}
+	model, _ = model.Update(dashboardKey('j'))
+	model, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+
+	if !strings.Contains(model.detailsDialog(), "u open") {
+		t.Fatal("details controls do not show u open for a valid location URL")
+	}
+	model, cmd := model.Update(dashboardKey('u'))
+	if cmd == nil || !model.ShowingDetails() {
+		t.Fatalf("details u command = %v, open = %v; want command with details still open", cmd, model.ShowingDetails())
+	}
+	message, ok := cmd().(URLOpenedMsg)
+	if !ok || message.URL != targetURL || message.Err != nil || openedURL != targetURL {
+		t.Fatalf("details open result = %+v, opened URL = %q", message, openedURL)
+	}
+}
+
+func TestDetailsHideOpenControlWithoutValidURL(t *testing.T) {
+	t.Parallel()
+
+	model := New(nil, nil, []surf.Spot{{ID: "honolua", Name: "Honolua Bay", URL: "file:///tmp/spot"}}, nil)
+	model, _ = model.Update(dashboardKey('j'))
+	model, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if strings.Contains(model.detailsDialog(), "u open") {
+		t.Fatal("details controls show u open for an invalid location URL")
+	}
+	if _, cmd := model.Update(dashboardKey('u')); cmd != nil {
+		t.Fatal("details u returned a command for an invalid location URL")
 	}
 }

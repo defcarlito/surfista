@@ -112,12 +112,15 @@ func (m Model) detailsDialog() string {
 }
 
 func (m Model) detailsStatus(canScrollUp, canScrollDown bool, width int) string {
-	actions := make([]string, 0, 3)
+	actions := make([]string, 0, 4)
 	if canScrollUp {
 		actions = append(actions, "↑/k scroll up")
 	}
 	if canScrollDown {
 		actions = append(actions, "↓/j scroll down")
+	}
+	if _, ok := m.detailsBrowserURL(); ok {
+		actions = append(actions, "u open")
 	}
 	actions = append(actions, "esc close")
 	status := ui.DashboardDetailHelpStyle.Render(strings.Join(actions, " • "))

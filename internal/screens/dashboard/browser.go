@@ -55,8 +55,25 @@ func (m Model) CanOpenSelectionURL() bool {
 	return ok
 }
 
+func (m Model) detailsBrowserURL() (string, bool) {
+	if !m.detailsOpen {
+		return "", false
+	}
+	return validBrowserURL(m.detailsSpot.URL)
+}
+
 func (m Model) openSelectedURLCmd() tea.Cmd {
 	targetURL, ok := m.selectedBrowserURL()
+	if !ok || m.openURL == nil {
+		return nil
+	}
+	return func() tea.Msg {
+		return URLOpenedMsg{URL: targetURL, Err: m.openURL(targetURL)}
+	}
+}
+
+func (m Model) openDetailsURLCmd() tea.Cmd {
+	targetURL, ok := m.detailsBrowserURL()
 	if !ok || m.openURL == nil {
 		return nil
 	}

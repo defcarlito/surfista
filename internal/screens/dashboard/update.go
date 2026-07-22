@@ -70,6 +70,8 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				if m.detailsScroll > 0 {
 					m.detailsScroll--
 				}
+			case "u":
+				return m, m.openDetailsURLCmd()
 			case "esc":
 				m.detailsOpen = false
 				m.detailsSpot = surf.Spot{}
