@@ -173,7 +173,7 @@ func (m Model) forecastHeader(width int) string {
 
 func (m Model) forecastAnnotationRow(dateRow string, slotWidth int) string {
 	cardWidth := slotWidth*len(dashboardHours) + gridBorderWidth
-	day, utcOffset, ok := m.detailsSunlightDay()
+	day, utcOffset, ok := m.headerSunlightDay()
 	if !ok {
 		return dateRow
 	}
@@ -213,16 +213,17 @@ func sunlightLabelPivot(label string) int {
 	return 0
 }
 
-func (m Model) detailsSunlightDay() (surf.SunlightDay, time.Duration, bool) {
-	if !m.detailsOpen || m.detailsSpot.ID == "" {
+func (m Model) headerSunlightDay() (surf.SunlightDay, time.Duration, bool) {
+	spotID := m.forecastHeaderSpotID()
+	if spotID == "" {
 		return surf.SunlightDay{}, 0, false
 	}
 
-	forecast := m.forecasts[m.detailsSpot.ID].forecast
+	forecast := m.forecasts[spotID].forecast
 	if len(forecast.Slots) == 0 {
 		return surf.SunlightDay{}, 0, false
 	}
-	if day, ok := sunlightForLocalDay(m.details[m.detailsSpot.ID].details, m.now(), forecast.UTCOffset, m.forecastDayOffset); ok {
+	if day, ok := sunlightForLocalDay(m.details[spotID].details, m.now(), forecast.UTCOffset, m.forecastDayOffset); ok {
 		return day, forecast.UTCOffset, true
 	}
 	return surf.SunlightDay{}, 0, false

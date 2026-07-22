@@ -44,9 +44,19 @@ func (m *Model) clampForecastDayOffset() {
 	m.forecastDayOffset = min(max(0, m.forecastDayOffset), m.maxForecastDayOffset())
 }
 
+func (m Model) forecastHeaderSpotID() string {
+	if m.detailsOpen && m.detailsSpot.ID != "" {
+		return m.detailsSpot.ID
+	}
+	if m.HasSelection() {
+		return m.spots[m.selectedIndex].ID
+	}
+	return ""
+}
+
 func (m Model) dashboardForecastDate(dayOffset int) time.Time {
-	if m.detailsOpen {
-		forecast := m.forecasts[m.detailsSpot.ID].forecast
+	if spotID := m.forecastHeaderSpotID(); spotID != "" {
+		forecast := m.forecasts[spotID].forecast
 		if len(forecast.Slots) > 0 {
 			return localDate(m.now(), forecast.UTCOffset).AddDate(0, 0, dayOffset)
 		}

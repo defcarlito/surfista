@@ -300,7 +300,7 @@ func TestDashboardStartsWithForecastDatesAndHours(t *testing.T) {
 	}
 }
 
-func TestDashboardShowsSelectedLocationSunlightOnlyInDetails(t *testing.T) {
+func TestDashboardShowsSunlightForSelectedLocationAndDetails(t *testing.T) {
 	t.Parallel()
 
 	const width = 80
@@ -348,10 +348,29 @@ func TestDashboardShowsSelectedLocationSunlightOnlyInDetails(t *testing.T) {
 	}
 	for _, hidden := range []string{"↑4:44a", "↓9:01p", "↑6:30a", "↓8:12p"} {
 		if strings.Contains(dashboardAnnotation, hidden) {
-			t.Fatalf("general dashboard shows location-specific sunlight marker %q:\n%s", hidden, dashboardAnnotation)
+			t.Fatalf("unselected dashboard shows location-specific sunlight marker %q:\n%s", hidden, dashboardAnnotation)
 		}
 	}
 
+	model.selectedIndex = 0
+	firstAnnotation := strings.Split(ansi.Strip(model.forecastHeader(width)), "\n")[0]
+	if !strings.Contains(firstAnnotation, "↑4:44a") || !strings.Contains(firstAnnotation, "↓9:01p") ||
+		strings.Contains(firstAnnotation, "↑6:30a") || strings.Contains(firstAnnotation, "↓8:12p") {
+		t.Fatalf("first selected location does not own the sunlight markers:\n%s", firstAnnotation)
+	}
+
+	model.selectedIndex = 1
+	selectedHeader := model.forecastHeader(width)
+	selectedAnnotation := strings.Split(ansi.Strip(selectedHeader), "\n")[0]
+	if !strings.Contains(selectedAnnotation, "7/22") || !strings.Contains(selectedAnnotation, "7/23") ||
+		!strings.Contains(selectedAnnotation, "↑6:30a") || !strings.Contains(selectedAnnotation, "↓8:12p") {
+		t.Fatalf("selected dashboard location is missing its local dates or daylight times:\n%s", selectedAnnotation)
+	}
+	if strings.Contains(selectedAnnotation, "↑4:44a") || strings.Contains(selectedAnnotation, "↓9:01p") {
+		t.Fatalf("selected dashboard location uses another location's daylight times:\n%s", selectedAnnotation)
+	}
+
+	model.selectedIndex = 0
 	model.detailsOpen = true
 	model.detailsSpot = detailsSpot
 	header := model.forecastHeader(width)
@@ -361,7 +380,7 @@ func TestDashboardShowsSelectedLocationSunlightOnlyInDetails(t *testing.T) {
 		t.Fatalf("details annotation row is missing selected-location dates or daylight times:\n%s", annotation)
 	}
 	if strings.Contains(annotation, "↑4:44a") || strings.Contains(annotation, "↓9:01p") {
-		t.Fatalf("details annotation row uses another location's daylight times:\n%s", annotation)
+		t.Fatalf("details annotation row did not override the dashboard selection:\n%s", annotation)
 	}
 
 	slotWidth := dashboardSlotWidth(width)
