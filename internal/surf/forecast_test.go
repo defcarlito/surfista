@@ -118,7 +118,7 @@ func TestSurflineForecastUsesRawHeightFallback(t *testing.T) {
 func TestSurflineForecastDetailsMergeCurrentConditions(t *testing.T) {
 	t.Parallel()
 
-	requests := make(chan *http.Request, 3)
+	requests := make(chan *http.Request, 4)
 	httpClient := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		requests <- r.Clone(context.Background())
 		var body string
@@ -135,6 +135,11 @@ func TestSurflineForecastDetailsMergeCurrentConditions(t *testing.T) {
 		case "/kbyg/spots/forecasts/weather":
 			body = `{"associated":{"units":{"temperature":"F"}},"data":{"weather":[
 				{"timestamp":100,"temperature":86}
+			]}}`
+		case "/kbyg/spots/forecasts/sunlight":
+			body = `{"data":{"sunlight":[
+				{"dawn":50,"sunrise":75,"sunset":175,"dusk":200},
+				{"dawn":250,"sunrise":275,"sunset":375,"dusk":400}
 			]}}`
 		default:
 			return forecastHTTPResponse(http.StatusNotFound, "text/plain", "not found"), nil
@@ -170,13 +175,19 @@ func TestSurflineForecastDetailsMergeCurrentConditions(t *testing.T) {
 	if len(details.Tides) != 2 || details.Tides[0].Type != "LOW" || details.Tides[1].Type != "HIGH" {
 		t.Fatalf("tides = %+v", details.Tides)
 	}
+	if len(details.Sunlight) != 2 {
+		t.Fatalf("sunlight days = %+v, want two", details.Sunlight)
+	}
+	if got := details.Sunlight[0]; got.Dawn.Unix() != 50 || got.Sunrise.Unix() != 75 || got.Sunset.Unix() != 175 || got.Dusk.Unix() != 200 {
+		t.Fatalf("first sunlight day = %+v", got)
+	}
 
 	seen := make(map[string]*http.Request)
-	for range 3 {
+	for range 4 {
 		request := <-requests
 		seen[request.URL.Path] = request
 	}
-	for _, kind := range []string{"wind", "tides", "weather"} {
+	for _, kind := range []string{"wind", "tides", "weather", "sunlight"} {
 		path := "/kbyg/spots/forecasts/" + kind
 		request := seen[path]
 		if request == nil {
@@ -186,6 +197,43 @@ func TestSurflineForecastDetailsMergeCurrentConditions(t *testing.T) {
 		if query.Get("spotId") != "honolua-id" || query.Get("days") != "10" || query.Get("intervalHours") != "1" {
 			t.Errorf("%s query = %v", path, query)
 		}
+	}
+}
+
+func TestSurflineForecastDetailsKeepsMissingSunlightTimesZero(t *testing.T) {
+	t.Parallel()
+
+	httpClient := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		var body string
+		switch r.URL.Path {
+		case "/kbyg/spots/forecasts/wind":
+			body = `{"data":{"wind":[]}}`
+		case "/kbyg/spots/forecasts/tides":
+			body = `{"data":{"tides":[]}}`
+		case "/kbyg/spots/forecasts/weather":
+			body = `{"data":{"weather":[]}}`
+		case "/kbyg/spots/forecasts/sunlight":
+			body = `{"data":{"sunlight":[{"sunrise":100,"sunset":200}]}}`
+		default:
+			return forecastHTTPResponse(http.StatusNotFound, "text/plain", "not found"), nil
+		}
+		return forecastHTTPResponse(http.StatusOK, "application/json", body), nil
+	})}
+
+	provider, err := NewSurflineForecastProvider("https://example.test", httpClient)
+	if err != nil {
+		t.Fatal(err)
+	}
+	details, err := provider.ForecastDetails(context.Background(), "spot-id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := details.Sunlight[0]
+	if !got.Dawn.IsZero() || !got.Dusk.IsZero() {
+		t.Fatalf("missing sunlight times = dawn %v, dusk %v; want zero values", got.Dawn, got.Dusk)
+	}
+	if got.Sunrise.Unix() != 100 || got.Sunset.Unix() != 200 {
+		t.Fatalf("sunrise/sunset = %v/%v", got.Sunrise, got.Sunset)
 	}
 }
 

@@ -19,8 +19,12 @@ func TestForecastCachePersistsAndMergesLocations(t *testing.T) {
 		ForecastUpdatedAt: firstUpdated,
 	}
 	second := surf.ForecastCacheEntry{
-		SpotID:           "second",
-		Details:          surf.ForecastDetails{SpotID: "second", Units: surf.ForecastUnits{WindSpeed: "KTS"}},
+		SpotID: "second",
+		Details: surf.ForecastDetails{
+			SpotID:   "second",
+			Units:    surf.ForecastUnits{WindSpeed: "KTS"},
+			Sunlight: []surf.SunlightDay{{Sunrise: firstUpdated, Sunset: firstUpdated.Add(12 * time.Hour)}},
+		},
 		DetailsUpdatedAt: firstUpdated.Add(time.Minute),
 	}
 	if err := store.SaveForecastCache(first); err != nil {
@@ -40,7 +44,7 @@ func TestForecastCachePersistsAndMergesLocations(t *testing.T) {
 	if got := loaded["first"]; got.ForecastUpdatedAt != firstUpdated || got.Forecast.Slots[0].Rating != "Fair" {
 		t.Fatalf("first cached forecast = %+v", got)
 	}
-	if got := loaded["second"]; got.DetailsUpdatedAt != second.DetailsUpdatedAt || got.Details.Units.WindSpeed != "KTS" {
+	if got := loaded["second"]; got.DetailsUpdatedAt != second.DetailsUpdatedAt || got.Details.Units.WindSpeed != "KTS" || len(got.Details.Sunlight) != 1 || !got.Details.Sunlight[0].Sunrise.Equal(firstUpdated) {
 		t.Fatalf("second cached details = %+v", got)
 	}
 }

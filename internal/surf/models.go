@@ -39,14 +39,15 @@ type SurfHeight struct {
 	HumanRelation string
 }
 
-// ForecastDetails contains the richer wind, weather, and tide data fetched for
-// a location's dashboard detail popover.
+// ForecastDetails contains the richer wind, weather, tide, and daylight data
+// fetched for a location.
 type ForecastDetails struct {
 	SpotID    string
 	UTCOffset time.Duration
 	Units     ForecastUnits
 	Slots     []ForecastDetailSlot
 	Tides     []TidePoint
+	Sunlight  []SunlightDay
 }
 
 // ForecastCacheEntry is the last successful base and detailed forecast saved
@@ -89,4 +90,14 @@ type TidePoint struct {
 	Timestamp time.Time
 	Type      string
 	Height    float64
+}
+
+// SunlightDay contains Surfline's daily daylight boundaries. The timestamps
+// remain in UTC so callers can consistently convert them using a spot's
+// timezone information.
+type SunlightDay struct {
+	Dawn    time.Time
+	Sunrise time.Time
+	Sunset  time.Time
+	Dusk    time.Time
 }

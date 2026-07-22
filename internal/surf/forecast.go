@@ -172,10 +172,15 @@ func (p *SurflineForecastProvider) ForecastDetails(ctx context.Context, spotID s
 		response weatherForecastResponse
 		err      error
 	}
+	type sunlightResult struct {
+		response sunlightForecastResponse
+		err      error
+	}
 
 	winds := make(chan windResult, 1)
 	tides := make(chan tideResult, 1)
 	weather := make(chan weatherResult, 1)
+	sunlight := make(chan sunlightResult, 1)
 	go func() {
 		var response windForecastResponse
 		err := p.getForecast(ctx, "wind", spotID, &response)
@@ -191,10 +196,16 @@ func (p *SurflineForecastProvider) ForecastDetails(ctx context.Context, spotID s
 		err := p.getForecast(ctx, "weather", spotID, &response)
 		weather <- weatherResult{response: response, err: err}
 	}()
+	go func() {
+		var response sunlightForecastResponse
+		err := p.getForecast(ctx, "sunlight", spotID, &response)
+		sunlight <- sunlightResult{response: response, err: err}
+	}()
 
 	wind := <-winds
 	tide := <-tides
 	conditions := <-weather
+	daylight := <-sunlight
 	for _, result := range []struct {
 		kind string
 		err  error
@@ -202,6 +213,7 @@ func (p *SurflineForecastProvider) ForecastDetails(ctx context.Context, spotID s
 		{kind: "wind", err: wind.err},
 		{kind: "tides", err: tide.err},
 		{kind: "weather", err: conditions.err},
+		{kind: "sunlight", err: daylight.err},
 	} {
 		if result.err != nil {
 			cancel()
@@ -248,10 +260,24 @@ func (p *SurflineForecastProvider) ForecastDetails(ctx context.Context, spotID s
 		return tidePoints[i].Timestamp.Before(tidePoints[j].Timestamp)
 	})
 
+	sunlightDays := make([]SunlightDay, 0, len(daylight.response.Data.Sunlight))
+	for _, day := range daylight.response.Data.Sunlight {
+		sunlightDays = append(sunlightDays, SunlightDay{
+			Dawn:    unixTimeOrZero(day.Dawn),
+			Sunrise: unixTimeOrZero(day.Sunrise),
+			Sunset:  unixTimeOrZero(day.Sunset),
+			Dusk:    unixTimeOrZero(day.Dusk),
+		})
+	}
+	sort.Slice(sunlightDays, func(i, j int) bool {
+		return sunlightSortTime(sunlightDays[i]).Before(sunlightSortTime(sunlightDays[j]))
+	})
+
 	associated := wind.response.Associated
 	for _, candidate := range []forecastAssociated{
 		tide.response.Associated,
 		conditions.response.Associated,
+		daylight.response.Associated,
 	} {
 		if associated.UTCOffset == 0 && candidate.UTCOffset != 0 {
 			associated.UTCOffset = candidate.UTCOffset
@@ -267,9 +293,26 @@ func (p *SurflineForecastProvider) ForecastDetails(ctx context.Context, spotID s
 			TideHeight:  associated.Units.TideHeight,
 			Temperature: associated.Units.Temperature,
 		},
-		Slots: slots,
-		Tides: tidePoints,
+		Slots:    slots,
+		Tides:    tidePoints,
+		Sunlight: sunlightDays,
 	}, nil
+}
+
+func unixTimeOrZero(timestamp int64) time.Time {
+	if timestamp == 0 {
+		return time.Time{}
+	}
+	return time.Unix(timestamp, 0).UTC()
+}
+
+func sunlightSortTime(day SunlightDay) time.Time {
+	for _, candidate := range []time.Time{day.Dawn, day.Sunrise, day.Sunset, day.Dusk} {
+		if !candidate.IsZero() {
+			return candidate
+		}
+	}
+	return time.Time{}
 }
 
 func mapSurflineSwells(points []struct {
@@ -427,6 +470,18 @@ type weatherForecastResponse struct {
 type weatherForecastPoint struct {
 	Timestamp   int64    `json:"timestamp"`
 	Temperature *float64 `json:"temperature"`
+}
+
+type sunlightForecastResponse struct {
+	Associated forecastAssociated `json:"associated"`
+	Data       struct {
+		Sunlight []struct {
+			Dawn    int64 `json:"dawn"`
+			Sunrise int64 `json:"sunrise"`
+			Sunset  int64 `json:"sunset"`
+			Dusk    int64 `json:"dusk"`
+		} `json:"sunlight"`
+	} `json:"data"`
 }
 
 type ratingForecastResponse struct {
