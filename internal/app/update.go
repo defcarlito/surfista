@@ -44,6 +44,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			switch key.String() {
 			case "s", "/":
+				if m.dashboard.HasSelection() {
+					break
+				}
 				m.current = searchScreen
 				return m, m.search.Focus()
 			case "q":

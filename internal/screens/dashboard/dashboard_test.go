@@ -266,6 +266,41 @@ func TestLocationSelectionStartsEmptyAndMovesWithJK(t *testing.T) {
 	}
 }
 
+func TestDashboardHelpShowsOnlyAvailableActions(t *testing.T) {
+	t.Parallel()
+
+	model := New(nil, nil, []surf.Spot{{ID: "honolua", Name: "Honolua Bay"}}, nil)
+	model, _ = model.Update(tea.WindowSizeMsg{Width: 80, Height: 20})
+	plain := ansi.Strip(model.View())
+	for _, want := range []string{"j/k select", "s or / search Surfline", "q quit"} {
+		if !strings.Contains(plain, want) {
+			t.Fatalf("unselected dashboard help does not contain %q:\n%s", want, plain)
+		}
+	}
+	for _, unavailable := range []string{"x remove", "Esc unselect"} {
+		if strings.Contains(plain, unavailable) {
+			t.Fatalf("unselected dashboard help contains unavailable action %q:\n%s", unavailable, plain)
+		}
+	}
+
+	model, _ = model.Update(dashboardKey('j'))
+	plain = ansi.Strip(model.View())
+	for _, want := range []string{"j/k select", "x remove", "Esc unselect", "q quit"} {
+		if !strings.Contains(plain, want) {
+			t.Fatalf("selected dashboard help does not contain %q:\n%s", want, plain)
+		}
+	}
+	if strings.Contains(plain, "search Surfline") {
+		t.Fatalf("selected dashboard help still offers search:\n%s", plain)
+	}
+
+	model, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
+	plain = ansi.Strip(model.View())
+	if !strings.Contains(plain, "search Surfline") || strings.Contains(plain, "x remove") || strings.Contains(plain, "Esc unselect") {
+		t.Fatalf("dashboard help did not return to browsing actions after Esc:\n%s", plain)
+	}
+}
+
 func TestLocationViewportScrollsWhileHeaderAndControlsStayPinned(t *testing.T) {
 	t.Parallel()
 

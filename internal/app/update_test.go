@@ -107,6 +107,42 @@ func TestDashboardKeysReachDashboardModel(t *testing.T) {
 	}
 }
 
+func TestDashboardSearchShortcutsRequireNoSelection(t *testing.T) {
+	t.Parallel()
+
+	model := New(
+		resizeTestSearcher{},
+		resizeTestTracker{},
+		nil,
+		[]surf.Spot{{ID: "honolua", Name: "Honolua Bay"}},
+		nil,
+	)
+	updatedModel, _ := model.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
+	updated := updatedModel.(Model)
+	if !updated.dashboard.HasSelection() {
+		t.Fatal("j did not select a dashboard location")
+	}
+
+	for _, shortcut := range []rune{'s', '/'} {
+		updatedModel, _ = updated.Update(tea.KeyPressMsg{Code: shortcut, Text: string(shortcut)})
+		updated = updatedModel.(Model)
+		if updated.current != homeScreen || !updated.dashboard.HasSelection() {
+			t.Fatalf("%q opened search or cleared selection while a location was selected", shortcut)
+		}
+	}
+
+	updatedModel, _ = updated.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
+	updated = updatedModel.(Model)
+	if updated.dashboard.HasSelection() {
+		t.Fatal("Esc did not clear dashboard selection")
+	}
+	updatedModel, _ = updated.Update(tea.KeyPressMsg{Code: 's', Text: "s"})
+	updated = updatedModel.(Model)
+	if updated.current != searchScreen {
+		t.Fatal("s did not open search after the dashboard selection was cleared")
+	}
+}
+
 func TestRemovalConfirmationBlocksDashboardNavigation(t *testing.T) {
 	t.Parallel()
 
