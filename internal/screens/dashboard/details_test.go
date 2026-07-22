@@ -195,6 +195,97 @@ func TestDetailsCurrentHourUsesTerminalClockInsteadOfSpotOffset(t *testing.T) {
 	}
 }
 
+func TestDetailsDayNavigationUsesSelectedForecastDate(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.July, 22, 12, 30, 0, 0, time.UTC)
+	spot := surf.Spot{ID: "honolua", Name: "Honolua Bay"}
+	forecast := surf.Forecast{SpotID: spot.ID}
+	details := surf.ForecastDetails{
+		SpotID: spot.ID,
+		Units:  surf.ForecastUnits{Temperature: "F"},
+	}
+	for dayOffset, rating := range []string{"Poor", "Good"} {
+		for hour := 0; hour < 24; hour++ {
+			timestamp := time.Date(2026, time.July, 22+dayOffset, hour, 0, 0, 0, time.UTC)
+			temperature := float64(70 + dayOffset*10)
+			forecast.Slots = append(forecast.Slots, surf.ForecastSlot{
+				Timestamp:  timestamp,
+				Rating:     rating,
+				SurfHeight: surf.SurfHeight{Min: float64(dayOffset + 1), Max: float64(dayOffset + 2)},
+			})
+			details.Slots = append(details.Slots, surf.ForecastDetailSlot{
+				Timestamp:   timestamp,
+				Temperature: &temperature,
+			})
+		}
+	}
+	closingTemperature := 80.0
+	closingTimestamp := time.Date(2026, time.July, 24, 0, 0, 0, 0, time.UTC)
+	forecast.Slots = append(forecast.Slots, surf.ForecastSlot{
+		Timestamp:  closingTimestamp,
+		Rating:     "Good",
+		SurfHeight: surf.SurfHeight{Min: 2, Max: 3},
+	})
+	details.Slots = append(details.Slots, surf.ForecastDetailSlot{
+		Timestamp:   closingTimestamp,
+		Temperature: &closingTemperature,
+	})
+
+	model := New(nil, nil, []surf.Spot{spot}, nil)
+	model.now = func() time.Time { return now }
+	model.forecasts[spot.ID] = forecastState{forecast: forecast}
+	model.details[spot.ID] = forecastDetailsState{details: details}
+	model, _ = model.Update(tea.WindowSizeMsg{Width: 120, Height: 24})
+	model, _ = model.Update(dashboardKey('j'))
+	model, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+
+	todayRows := model.detailsForecastRows()
+	if !containsCurrentDetailRow(todayRows) || model.detailsScroll == 0 {
+		t.Fatalf("today details did not open around the current hour: offset=%d rows=%+v", model.detailsScroll, todayRows)
+	}
+	if !strings.Contains(ansi.Strip(model.detailsDialog()), "←/→/h/l day") {
+		t.Fatal("details controls do not show day navigation")
+	}
+	model, _ = model.Update(dashboardKey('j'))
+	preservedScroll := model.detailsScroll
+
+	model, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyRight})
+	if model.forecastDayOffset != 1 || model.detailsScroll != preservedScroll {
+		t.Fatalf("future details state = day %d scroll %d, want day 1 scroll %d", model.forecastDayOffset, model.detailsScroll, preservedScroll)
+	}
+	futureRows := model.detailsForecastRows()
+	if len(futureRows) != 25 || containsCurrentDetailRow(futureRows) {
+		t.Fatalf("future details rows = %d with current=%v, want 25 without current", len(futureRows), containsCurrentDetailRow(futureRows))
+	}
+	if futureRows[0].timeLabel != "12a" || futureRows[12].timeLabel != "12p" || futureRows[23].timeLabel != "11p" || futureRows[24].timeLabel != "12a" {
+		t.Fatalf("future detail time labels = %q, %q, %q, %q; want 12a, 12p, 11p, 12a", futureRows[0].timeLabel, futureRows[12].timeLabel, futureRows[23].timeLabel, futureRows[24].timeLabel)
+	}
+	for _, row := range futureRows {
+		if row.forecast.Rating != "Good" || row.details.Temperature == nil || *row.details.Temperature != 80 {
+			t.Fatalf("future detail row uses the wrong date's data: %+v", row)
+		}
+	}
+	plainFuture := ansi.Strip(model.detailsDialog())
+	if strings.Contains(plainFuture, "now") || !strings.Contains(plainFuture, "80°F") {
+		t.Fatalf("future details show current-time context or wrong values:\n%s", plainFuture)
+	}
+
+	model, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyLeft})
+	if model.forecastDayOffset != 0 || !containsCurrentDetailRow(model.detailsForecastRows()) || model.detailsScroll != preservedScroll {
+		t.Fatalf("return to today = day %d scroll %d, want scroll %d; rows=%+v", model.forecastDayOffset, model.detailsScroll, preservedScroll, model.detailsForecastRows())
+	}
+}
+
+func containsCurrentDetailRow(rows []forecastDetailRow) bool {
+	for _, row := range rows {
+		if row.current {
+			return true
+		}
+	}
+	return false
+}
+
 func TestDetailsRowsScrollWithJKWithoutChangingSelection(t *testing.T) {
 	t.Parallel()
 

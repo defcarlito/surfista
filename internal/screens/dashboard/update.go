@@ -78,6 +78,18 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 		if m.detailsOpen {
 			switch msg.String() {
+			case "h", "left":
+				previousDay := m.forecastDayOffset
+				m.moveForecastDay(-1)
+				if m.forecastDayOffset != previousDay {
+					m.clampDetailsScroll()
+				}
+			case "l", "right":
+				previousDay := m.forecastDayOffset
+				m.moveForecastDay(1)
+				if m.forecastDayOffset != previousDay {
+					m.clampDetailsScroll()
+				}
 			case "j", "down":
 				rows := m.detailsForecastRows()
 				visible := m.detailsVisibleRowCount(len(rows))

@@ -112,7 +112,8 @@ func (m Model) detailsDialog() string {
 }
 
 func (m Model) detailsStatus(canScrollUp, canScrollDown bool, width int) string {
-	actions := make([]string, 0, 4)
+	actions := make([]string, 0, 5)
+	actions = append(actions, "←/→/h/l day")
 	if canScrollUp {
 		actions = append(actions, "↑/k scroll up")
 	}
@@ -189,17 +190,19 @@ func (m Model) detailsForecastRows() []forecastDetailRow {
 		detailsByTimestamp[slot.Timestamp.Unix()] = slot
 	}
 	now := m.now()
-	forecastSlots := slotsForLocalDay(forecastState.forecast, now)
+	forecastSlots := slotsForLocalDayOffset(forecastState.forecast, now, m.forecastDayOffset)
 	rows := make([]forecastDetailRow, 0, len(forecastSlots))
 	localNow := now.UTC().Add(forecastState.forecast.UTCOffset)
+	selectedDate := localDate(now, forecastState.forecast.UTCOffset).AddDate(0, 0, m.forecastDayOffset)
+	ny, nm, nd := localNow.Date()
+	dy, dm, dd := selectedDate.Date()
 	currentHour := now.Hour()
 	for _, slot := range forecastSlots {
 		localSlot := slot.Timestamp.UTC().Add(forecastState.forecast.UTCOffset)
 		hour := localSlot.Hour()
 		sy, sm, sd := localSlot.Date()
-		ny, nm, nd := localNow.Date()
-		current := sy == ny && sm == nm && sd == nd && localSlot.Hour() == currentHour
-		if sy != ny || sm != nm || sd != nd {
+		current := m.forecastDayOffset == 0 && sy == ny && sm == nm && sd == nd && localSlot.Hour() == currentHour
+		if sy != dy || sm != dm || sd != dd {
 			hour = 24
 		}
 		detail, hasDetail := detailsByTimestamp[slot.Timestamp.Unix()]
