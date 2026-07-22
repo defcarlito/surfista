@@ -12,6 +12,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.terminalWidth = msg.Width
 		m.terminalHeight = msg.Height
 		m.ensureSelectedVisible()
+		m.clampDetailsScroll()
 	case ForecastLoadedMsg:
 		if _, tracked := m.forecasts[msg.SpotID]; !tracked {
 			return m, nil
@@ -57,6 +58,25 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+		if m.detailsOpen {
+			switch msg.String() {
+			case "j", "down":
+				rows := m.detailsForecastRows()
+				visible := m.detailsVisibleRowCount(len(rows))
+				if m.detailsScroll < max(0, len(rows)-visible) {
+					m.detailsScroll++
+				}
+			case "k", "up":
+				if m.detailsScroll > 0 {
+					m.detailsScroll--
+				}
+			case "esc":
+				m.detailsOpen = false
+				m.detailsSpot = surf.Spot{}
+				m.detailsScroll = 0
+			}
+			return m, nil
+		}
 		switch msg.String() {
 		case "j", "down":
 			if len(m.spots) == 0 {
@@ -78,6 +98,8 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			}
 		case "esc":
 			m.selectedIndex = -1
+		case "enter":
+			return m, m.openSelectedDetails()
 		case "s":
 			return m, m.cycleSort()
 		case "u":

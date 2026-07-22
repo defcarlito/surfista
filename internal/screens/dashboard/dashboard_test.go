@@ -332,6 +332,9 @@ func TestDashboardHelpShowsOnlyAvailableActions(t *testing.T) {
 			t.Fatalf("unselected dashboard help does not contain %q:\n%s", want, plain)
 		}
 	}
+	if strings.Contains(plain, "enter details") {
+		t.Fatalf("unselected dashboard help contains unavailable details action:\n%s", plain)
+	}
 	if strings.Contains(plain, "s or /") {
 		t.Fatalf("unselected dashboard help still offers s as a search shortcut:\n%s", plain)
 	}
@@ -343,7 +346,7 @@ func TestDashboardHelpShowsOnlyAvailableActions(t *testing.T) {
 
 	model, _ = model.Update(dashboardKey('j'))
 	plain = ansi.Strip(model.View())
-	for _, want := range []string{"↑/k ↓/j navigate", "x remove", "esc unselect", "q quit"} {
+	for _, want := range []string{"↑/k ↓/j navigate", "enter details", "x remove", "esc unselect", "q quit"} {
 		if !strings.Contains(plain, want) {
 			t.Fatalf("selected dashboard help does not contain %q:\n%s", want, plain)
 		}

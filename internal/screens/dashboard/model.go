@@ -105,6 +105,10 @@ func (m Model) ConfirmingRemoval() bool {
 	return m.confirmRemoval
 }
 
+func (m Model) ShowingDetails() bool {
+	return m.detailsOpen
+}
+
 func (m Model) HasSelection() bool {
 	return m.selectedIndex >= 0 && m.selectedIndex < len(m.spots)
 }
@@ -136,6 +140,11 @@ func (m *Model) removeSpot(spotID string) {
 	m.removing = false
 	m.removalSpot = surf.Spot{}
 	m.removalErr = nil
+	if m.detailsSpot.ID == spotID {
+		m.detailsOpen = false
+		m.detailsSpot = surf.Spot{}
+		m.detailsScroll = 0
+	}
 }
 
 func (m Model) Init() tea.Cmd {
@@ -201,4 +210,25 @@ func (m Model) fetchForecastDetails(spotID string) tea.Cmd {
 		details, err := m.detailsProvider.ForecastDetails(ctx, spotID)
 		return ForecastDetailsLoadedMsg{SpotID: spotID, Details: details, Err: err}
 	}
+}
+
+func (m *Model) openSelectedDetails() tea.Cmd {
+	if !m.HasSelection() {
+		return nil
+	}
+
+	spot := m.spots[m.selectedIndex]
+	m.detailsOpen = true
+	m.detailsSpot = spot
+	m.resetDetailsScroll()
+	state, cached := m.details[spot.ID]
+	if cached && (state.loading || state.err == nil) {
+		return nil
+	}
+	if m.detailsProvider == nil {
+		m.details[spot.ID] = forecastDetailsState{err: errors.New("detailed forecast is unavailable")}
+		return nil
+	}
+	m.details[spot.ID] = forecastDetailsState{loading: true}
+	return m.fetchForecastDetails(spot.ID)
 }

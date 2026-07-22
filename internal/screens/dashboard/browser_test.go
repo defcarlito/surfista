@@ -100,17 +100,17 @@ func TestOpenURLControlAppearsOnlyForOpenableSelection(t *testing.T) {
 
 	const targetURL = "https://www.surfline.com/surf-report/honolua-bay/id"
 	model := New(nil, nil, []surf.Spot{{ID: "honolua", Name: "Honolua Bay", URL: targetURL}}, nil)
-	if strings.Contains(model.View(), "u open in browser") {
+	if strings.Contains(model.View(), "u open") {
 		t.Fatal("URL control appeared without a selected location")
 	}
 	model, _ = model.Update(dashboardKey('j'))
-	if !strings.Contains(model.View(), "u open in browser") {
+	if !strings.Contains(model.View(), "u open") {
 		t.Fatal("URL control did not appear for an openable selected location")
 	}
 
 	model = New(nil, nil, []surf.Spot{{ID: "legacy", Name: "Legacy Spot"}}, nil)
 	model, _ = model.Update(dashboardKey('j'))
-	if strings.Contains(model.View(), "u open in browser") {
+	if strings.Contains(model.View(), "u open") {
 		t.Fatal("URL control appeared for a selected location without a URL")
 	}
 }

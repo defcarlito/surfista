@@ -139,6 +139,28 @@ var (
 					Faint(true).
 					Foreground(mutedColor)
 
+	DashboardDetailDialogStyle = lipgloss.NewStyle().
+					Border(lipgloss.RoundedBorder()).
+					BorderForeground(borderColor).
+					Foreground(OceanPalette.White).
+					Padding(1, 1)
+
+	DashboardDetailTitleStyle = lipgloss.NewStyle().
+					Bold(true).
+					Foreground(primaryColor)
+
+	DashboardDetailLabelStyle = lipgloss.NewStyle().
+					Faint(true).
+					Foreground(mutedColor)
+
+	DashboardDetailValueStyle = lipgloss.NewStyle().
+					Bold(true).
+					Foreground(OceanPalette.White)
+
+	DashboardDetailHelpStyle = lipgloss.NewStyle().
+					Faint(true).
+					Foreground(mutedColor)
+
 	DashboardHelpStyle = lipgloss.NewStyle().
 				Faint(true).
 				Foreground(mutedColor)

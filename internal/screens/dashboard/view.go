@@ -27,8 +27,8 @@ var dashboardHours = [...]int{0, 3, 6, 9, 12, 15, 18, 21, 24}
 
 const (
 	dashboardBrowseHelp = "↑/k ↓/j navigate • / search Surfline • q quit"
-	dashboardSelectHelp = "↑/k ↓/j navigate • x remove • esc unselect • q quit"
-	dashboardURLHelp    = "↑/k ↓/j navigate • u open in browser • x remove • esc unselect • q quit"
+	dashboardSelectHelp = "↑/k ↓/j navigate • enter details • x remove • esc unselect • q quit"
+	dashboardURLHelp    = "↑/k ↓/j navigate • enter details • u open • x remove • esc unselect • q quit"
 )
 
 func (m Model) View() string {
@@ -52,6 +52,9 @@ func (m Model) View() string {
 	}
 	if m.confirmRemoval {
 		return m.removalOverlay(content)
+	}
+	if m.detailsOpen {
+		return m.detailsOverlay(content)
 	}
 	return content
 }

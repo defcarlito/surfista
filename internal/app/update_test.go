@@ -203,6 +203,42 @@ func TestRemovalConfirmationBlocksDashboardNavigation(t *testing.T) {
 	}
 }
 
+func TestForecastDetailsPopoverBlocksDashboardShortcuts(t *testing.T) {
+	t.Parallel()
+
+	model := New(
+		resizeTestSearcher{},
+		resizeTestTracker{},
+		nil,
+		[]surf.Spot{{ID: "honolua", Name: "Honolua Bay"}},
+		nil,
+	)
+	updatedModel, _ := model.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
+	updated := updatedModel.(Model)
+	updatedModel, _ = updated.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	updated = updatedModel.(Model)
+	if !updated.dashboard.ShowingDetails() {
+		t.Fatal("enter did not open dashboard details")
+	}
+
+	updatedModel, cmd := updated.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
+	updated = updatedModel.(Model)
+	if cmd != nil || updated.current != homeScreen || !updated.dashboard.ShowingDetails() {
+		t.Fatal("quit shortcut escaped the forecast details popover")
+	}
+	updatedModel, _ = updated.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
+	updated = updatedModel.(Model)
+	if updated.current != homeScreen || !updated.dashboard.ShowingDetails() {
+		t.Fatal("search shortcut escaped the forecast details popover")
+	}
+
+	updatedModel, _ = updated.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
+	updated = updatedModel.(Model)
+	if updated.dashboard.ShowingDetails() || !updated.dashboard.HasSelection() {
+		t.Fatal("escape did not close forecast details while preserving selection")
+	}
+}
+
 type appTestForecastProvider struct{}
 
 func (*appTestForecastProvider) Forecast(context.Context, string) (surf.Forecast, error) {
