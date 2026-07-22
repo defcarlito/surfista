@@ -41,6 +41,15 @@ var (
 	successColor = lipgloss.Color("2")
 	errorColor   = lipgloss.Color("1")
 
+	ratingVeryPoorColor = lipgloss.Color("#F0446D")
+	ratingPoorColor     = lipgloss.Color("#FF9100")
+	ratingPoorFairColor = lipgloss.Color("#FFCA28")
+	ratingFairColor     = lipgloss.Color("#16CC77")
+	ratingFairGoodColor = lipgloss.Color("#0D9E86")
+	ratingGoodColor     = lipgloss.Color("#684CF3")
+	ratingVeryGoodColor = lipgloss.Color("#6C36E5")
+	ratingEpicColor     = lipgloss.Color("#7020D6")
+
 	TitleStyle = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(primaryColor)
@@ -142,6 +151,32 @@ func Title(value string) string   { return TitleStyle.Render(GradientText(value)
 func Muted(value string) string   { return MutedStyle.Render(value) }
 func Success(value string) string { return SuccessStyle.Render(value) }
 func Error(value string) string   { return ErrorStyle.Render(value) }
+
+func DashboardRating(value, rating string) string {
+	var foreground color.Color
+	switch rating {
+	case "Very Poor":
+		foreground = ratingVeryPoorColor
+	case "Poor":
+		foreground = ratingPoorColor
+	case "Poor to Fair":
+		foreground = ratingPoorFairColor
+	case "Fair":
+		foreground = ratingFairColor
+	case "Fair to Good":
+		foreground = ratingFairGoodColor
+	case "Good":
+		foreground = ratingGoodColor
+	case "Very Good":
+		foreground = ratingVeryGoodColor
+	case "Epic":
+		foreground = ratingEpicColor
+	}
+	if foreground == nil {
+		return value
+	}
+	return lipgloss.NewStyle().Foreground(foreground).Render(value)
+}
 
 func GradientText(value string) string {
 	lines := strings.Split(value, "\n")

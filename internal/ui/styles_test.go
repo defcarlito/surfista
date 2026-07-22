@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"image/color"
 	"strings"
 	"testing"
 
@@ -39,5 +40,42 @@ func TestGradientBackgroundFillsRequestedWidth(t *testing.T) {
 	}
 	if plain := ansi.Strip(rendered); !strings.HasPrefix(plain, "> Honolua Bay") {
 		t.Fatalf("gradient background lost its content: %q", plain)
+	}
+}
+
+func TestDashboardRatingUsesConditionColorScale(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		rating string
+		color  color.Color
+	}{
+		{rating: "Very Poor", color: lipgloss.Color("#F0446D")},
+		{rating: "Poor", color: lipgloss.Color("#FF9100")},
+		{rating: "Poor to Fair", color: lipgloss.Color("#FFCA28")},
+		{rating: "Fair", color: lipgloss.Color("#16CC77")},
+		{rating: "Fair to Good", color: lipgloss.Color("#0D9E86")},
+		{rating: "Good", color: lipgloss.Color("#684CF3")},
+		{rating: "Very Good", color: lipgloss.Color("#6C36E5")},
+		{rating: "Epic", color: lipgloss.Color("#7020D6")},
+	}
+
+	for _, test := range tests {
+		test := test
+		t.Run(test.rating, func(t *testing.T) {
+			t.Parallel()
+			got := DashboardRating("rating", test.rating)
+			want := lipgloss.NewStyle().Foreground(test.color).Render("rating")
+			if got != want {
+				t.Fatalf("DashboardRating(%q) = %q, want %q", test.rating, got, want)
+			}
+			if ansi.Strip(got) != "rating" {
+				t.Fatalf("rating color changed text content: %q", got)
+			}
+		})
+	}
+
+	if got := DashboardRating("Unknown", "UNKNOWN"); got != "Unknown" {
+		t.Fatalf("unknown rating = %q, want unstyled text", got)
 	}
 }

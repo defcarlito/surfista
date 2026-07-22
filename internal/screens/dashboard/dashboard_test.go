@@ -126,6 +126,33 @@ func TestHeightUsesFeetInsteadOfBodyRelation(t *testing.T) {
 	}
 }
 
+func TestForecastCardColorsRatingsByCondition(t *testing.T) {
+	t.Parallel()
+
+	ratings := []string{"Very Poor", "Poor", "Poor to Fair", "Fair", "Fair to Good", "Good", "Very Good", "Epic"}
+	forecast := surf.Forecast{SpotID: "honolua"}
+	for index, rating := range ratings {
+		forecast.Slots = append(forecast.Slots, surf.ForecastSlot{
+			Timestamp:  time.Date(2026, time.July, 21, index*3, 0, 0, 0, time.UTC),
+			Rating:     rating,
+			SurfHeight: surf.SurfHeight{Min: 1, Max: 2},
+		})
+	}
+
+	spot := surf.Spot{ID: "honolua", Name: "Honolua Bay"}
+	model := New(nil, nil, []surf.Spot{spot}, nil)
+	model.forecasts[spot.ID] = forecastState{forecast: forecast}
+	model.now = func() time.Time { return time.Date(2026, time.July, 21, 12, 0, 0, 0, time.UTC) }
+	card := model.spotCard(spot, 10, false)
+	for _, rating := range ratings {
+		compact := compactRating(rating, 10)
+		colored := ui.DashboardRating(compact, rating)
+		if !strings.Contains(card, colored) {
+			t.Fatalf("forecast card does not color %q:\n%s", rating, ansi.Strip(card))
+		}
+	}
+}
+
 func TestNarrowViewKeepsForecastOnSharedAxis(t *testing.T) {
 	t.Parallel()
 

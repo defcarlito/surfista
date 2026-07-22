@@ -383,7 +383,8 @@ func (m Model) spotCard(spot surf.Spot, slotWidth int, selected bool) string {
 		if isCurrentDashboardHour(hour, now) {
 			currentIndex = index
 		}
-		ratings = append(ratings, tableCell(compactRating(slot.Rating, slotWidth), slotWidth))
+		compact := compactRating(slot.Rating, slotWidth)
+		ratings = append(ratings, tableCell(ui.DashboardRating(compact, slot.Rating), slotWidth))
 		heights = append(heights, tableCell(compactHeight(slot.SurfHeight, slotWidth), slotWidth))
 	}
 
