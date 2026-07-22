@@ -98,9 +98,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m, nil
 		}
 		switch msg.String() {
-		case "h":
+		case "h", "left":
 			m.moveForecastDay(-1)
-		case "l":
+		case "l", "right":
 			m.moveForecastDay(1)
 		case "j", "down":
 			if len(m.spots) == 0 {

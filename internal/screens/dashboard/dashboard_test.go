@@ -411,6 +411,15 @@ func TestDashboardDayNavigationUsesAvailableForecastDates(t *testing.T) {
 	if header := ansi.Strip(model.forecastHeader(80)); !strings.Contains(header, "now") {
 		t.Fatalf("today header did not restore the current-hour marker:\n%s", header)
 	}
+
+	model, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyRight})
+	if model.forecastDayOffset != 1 {
+		t.Fatalf("day offset after right arrow = %d, want 1", model.forecastDayOffset)
+	}
+	model, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyLeft})
+	if model.forecastDayOffset != 0 {
+		t.Fatalf("day offset after left arrow = %d, want 0", model.forecastDayOffset)
+	}
 }
 
 func TestDashboardDatesUseForecastLocalDay(t *testing.T) {
@@ -628,7 +637,7 @@ func TestDashboardHelpShowsOnlyAvailableActions(t *testing.T) {
 	model := New(nil, nil, []surf.Spot{{ID: "honolua", Name: "Honolua Bay"}}, nil)
 	model, _ = model.Update(tea.WindowSizeMsg{Width: 80, Height: 20})
 	plain := ansi.Strip(model.View())
-	for _, want := range []string{"h/l day", "↑/↓/j/k", "s cycle sort", "/ search", "q quit"} {
+	for _, want := range []string{"←/→/h/l day", "↑/↓/j/k", "s sort", "/ search", "q quit"} {
 		if !strings.Contains(plain, want) {
 			t.Fatalf("unselected dashboard help does not contain %q:\n%s", want, plain)
 		}
@@ -647,7 +656,7 @@ func TestDashboardHelpShowsOnlyAvailableActions(t *testing.T) {
 
 	model, _ = model.Update(dashboardKey('j'))
 	plain = ansi.Strip(model.View())
-	for _, want := range []string{"h/l day", "↑/↓/j/k", "s cycle sort", "enter", "x remove", "esc", "q quit"} {
+	for _, want := range []string{"←/→/h/l day", "↑/↓/j/k", "s sort", "enter", "x remove", "esc", "q quit"} {
 		if !strings.Contains(plain, want) {
 			t.Fatalf("selected dashboard help does not contain %q:\n%s", want, plain)
 		}
@@ -692,10 +701,10 @@ func TestLocationViewportScrollsWhileHeaderAndControlsStayPinned(t *testing.T) {
 	if strings.TrimSpace(lines[3]) != "" {
 		t.Fatalf("expected one blank row between the current-time label and sort status: %q", lines[3])
 	}
-	if !strings.Contains(lines[4], "sorting by: time added") || strings.Contains(lines[4], "s cycle sort") {
+	if !strings.Contains(lines[4], "sorting by: time added") || strings.Contains(lines[4], "s sort") {
 		t.Fatalf("sort status is not between the times and locations: %q", lines[4])
 	}
-	if !strings.Contains(lines[len(lines)-2], "↑/↓/j/k") || !strings.Contains(lines[len(lines)-2], "s cycle sort") || strings.TrimSpace(lines[len(lines)-1]) != "" {
+	if !strings.Contains(lines[len(lines)-2], "↑/↓/j/k") || !strings.Contains(lines[len(lines)-2], "s sort") || strings.TrimSpace(lines[len(lines)-1]) != "" {
 		t.Fatalf("controls are not one row above the bottom: %q / %q", lines[len(lines)-2], lines[len(lines)-1])
 	}
 	for _, want := range []string{"First Location", "Second Location"} {
@@ -804,7 +813,7 @@ func TestLocationViewportReflowsAroundSelectionAfterResize(t *testing.T) {
 	if !strings.Contains(lines[len(lines)-2], "↑/↓/j/k") || strings.TrimSpace(lines[len(lines)-1]) != "" {
 		t.Fatalf("compact layout did not keep controls at the bottom:\n%s", plain)
 	}
-	if !strings.Contains(lines[3], "sorting by: time added") || !strings.Contains(lines[len(lines)-2], "s cycle sort") {
+	if !strings.Contains(lines[3], "sorting by: time added") || !strings.Contains(lines[len(lines)-2], "s sort") {
 		t.Fatalf("compact layout did not separate sort status from its bottom control:\n%s", plain)
 	}
 }

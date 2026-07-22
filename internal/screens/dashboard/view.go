@@ -27,9 +27,9 @@ const (
 var dashboardHours = [...]int{0, 3, 6, 9, 12, 15, 18, 21, 24}
 
 const (
-	dashboardBrowseHelp = "h/l day • ↑/↓/j/k • s cycle sort • / search • q quit"
-	dashboardSelectHelp = "h/l day • ↑/↓/j/k • s cycle sort • enter • x remove • esc • q quit"
-	dashboardURLHelp    = "h/l day • ↑/↓/j/k • s cycle sort • enter • u open • x remove • esc • q quit"
+	dashboardBrowseHelp = "←/→/h/l day • ↑/↓/j/k • s sort • / search • q quit"
+	dashboardSelectHelp = "←/→/h/l day • ↑/↓/j/k • s sort • enter • x remove • esc • q quit"
+	dashboardURLHelp    = "←/→/h/l day • ↑/↓/j/k • s sort • enter • u open • x remove • esc • q quit"
 )
 
 func (m Model) View() string {
