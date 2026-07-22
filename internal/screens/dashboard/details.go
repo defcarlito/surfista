@@ -304,7 +304,7 @@ func repeatString(value string, count int) []string {
 func surfHeightRowLines(slot surf.ForecastSlot, width int) []string {
 	lines := []string{
 		ui.DashboardDetailValueStyle.Render(formatDetailHeight(slot.SurfHeight)),
-		ui.DashboardRating(strings.ToLower(slot.Rating), slot.Rating),
+		ui.DashboardRating(uppercaseFirst(strings.ToLower(slot.Rating)), slot.Rating),
 	}
 	if relation := strings.TrimSpace(slot.SurfHeight.HumanRelation); relation != "" {
 		relation = uppercaseFirst(strings.ToLower(relation))

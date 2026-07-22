@@ -84,7 +84,7 @@ func TestEnterOpensCurrentForecastDetailsAndEscapeCloses(t *testing.T) {
 	plain := ansi.Strip(model.View())
 	for _, want := range []string{
 		"Honolua Bay",
-		"fair to good",
+		"Fair to good",
 		"Surf height",
 		"3–4′+",
 		"Waist to shoulder",
