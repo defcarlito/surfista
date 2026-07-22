@@ -71,11 +71,13 @@ func (m Model) dashboardHeader(width int) string {
 }
 
 func (m Model) dashboardTitleLine(width int) string {
+	brand := ui.Title("Surfista")
 	title := ui.DashboardSubtitleStyle.Render("Today's surf conditions")
 	now := m.now()
 	date := ui.DashboardSubtitleStyle.Render(fmt.Sprintf("%d/%d", now.Month(), now.Day()))
 	canvas := lipgloss.NewCanvas(width, 1)
 	return canvas.Compose(lipgloss.NewCompositor(
+		lipgloss.NewLayer(brand),
 		lipgloss.NewLayer(title).X(max(0, (width-lipgloss.Width(title))/2)),
 		lipgloss.NewLayer(date).X(max(0, width-lipgloss.Width(date))),
 	)).Render()

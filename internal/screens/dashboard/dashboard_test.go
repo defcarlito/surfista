@@ -147,6 +147,9 @@ func TestDashboardHeaderCentersTitleAndRightAlignsDate(t *testing.T) {
 	}
 
 	line := ansi.Strip(model.dashboardTitleLine(width))
+	if !strings.HasPrefix(line, "Surfista") {
+		t.Fatalf("gradient brand is not aligned to the left edge: %q", line)
+	}
 	if titleStart := strings.Index(line, title); titleStart != (width-len(title))/2 {
 		t.Fatalf("title starts at %d, want %d: %q", titleStart, (width-len(title))/2, line)
 	}
