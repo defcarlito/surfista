@@ -16,14 +16,15 @@ type Spot struct {
 
 // Forecast is an hourly surf outlook for a spot. UTCOffset is kept separately
 // because the terminal may be running in a different timezone from the surf
-// spot. The dashboard samples these slots every three hours.
+// spot. The dashboard can select and sample a local day from the full window.
 type Forecast struct {
 	SpotID    string
 	UTCOffset time.Duration
 	Slots     []ForecastSlot
 }
 
-// ForecastSlot contains only the data the first dashboard iteration needs.
+// ForecastSlot contains the surf data used by the dashboard for each hour in
+// the available forecast window.
 type ForecastSlot struct {
 	Timestamp  time.Time
 	Rating     string
@@ -38,8 +39,8 @@ type SurfHeight struct {
 	HumanRelation string
 }
 
-// ForecastDetails contains the richer forecast data loaded only when a user
-// opens a location's dashboard detail popover.
+// ForecastDetails contains the richer wind, weather, and tide data fetched for
+// a location's dashboard detail popover.
 type ForecastDetails struct {
 	SpotID    string
 	UTCOffset time.Duration

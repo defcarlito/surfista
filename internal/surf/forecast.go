@@ -14,7 +14,12 @@ import (
 	"time"
 )
 
-const forecastResponseLimit = 4 << 20
+const (
+	forecastResponseLimit = 4 << 20
+	// surflineForecastDays covers today and the following nine days shown in
+	// Surfline's spot forecast.
+	surflineForecastDays = 10
+)
 
 const surfistaUserAgent = "surfista/0.1"
 
@@ -291,9 +296,7 @@ func (p *SurflineForecastProvider) getForecast(ctx context.Context, kind, spotID
 	endpoint.Path = strings.TrimRight(endpoint.Path, "/") + "/kbyg/spots/forecasts/" + kind
 	params := endpoint.Query()
 	params.Set("spotId", spotID)
-	// Surfline's one-day response ends at 9pm. Request the following day so
-	// the dashboard can include the next-midnight boundary, then filter there.
-	params.Set("days", "2")
+	params.Set("days", fmt.Sprint(surflineForecastDays))
 	params.Set("intervalHours", "1")
 	if kind == "wave" {
 		params.Set("maxHeights", "false")
