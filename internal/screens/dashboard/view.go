@@ -27,8 +27,8 @@ var dashboardHours = [...]int{0, 3, 6, 9, 12, 15, 18, 21, 24}
 
 const (
 	dashboardBrowseHelp = "↑/k ↓/j navigate • / search Surfline • q quit"
-	dashboardSelectHelp = "↑/k ↓/j navigate • x remove • Esc unselect • q quit"
-	dashboardURLHelp    = "↑/k ↓/j navigate • u open in browser • x remove • Esc unselect • q quit"
+	dashboardSelectHelp = "↑/k ↓/j navigate • x remove • esc unselect • q quit"
+	dashboardURLHelp    = "↑/k ↓/j navigate • u open in browser • x remove • esc unselect • q quit"
 )
 
 func (m Model) View() string {
@@ -86,7 +86,7 @@ func (m Model) dashboardFooter(width int) string {
 	if m.terminalHeight > 0 && m.terminalHeight < spaciousLayoutMinHeight {
 		return lipgloss.JoinVertical(lipgloss.Left, sortIndicator, help, "")
 	}
-	return lipgloss.JoinVertical(lipgloss.Left, "", sortIndicator, help, "")
+	return lipgloss.JoinVertical(lipgloss.Left, sortIndicator, "", help, "")
 }
 
 func (m Model) sortIndicator(width int) string {

@@ -311,7 +311,7 @@ func TestDashboardHelpShowsOnlyAvailableActions(t *testing.T) {
 	if strings.Contains(plain, "s or /") {
 		t.Fatalf("unselected dashboard help still offers s as a search shortcut:\n%s", plain)
 	}
-	for _, unavailable := range []string{"x remove", "Esc unselect"} {
+	for _, unavailable := range []string{"x remove", "esc unselect"} {
 		if strings.Contains(plain, unavailable) {
 			t.Fatalf("unselected dashboard help contains unavailable action %q:\n%s", unavailable, plain)
 		}
@@ -319,7 +319,7 @@ func TestDashboardHelpShowsOnlyAvailableActions(t *testing.T) {
 
 	model, _ = model.Update(dashboardKey('j'))
 	plain = ansi.Strip(model.View())
-	for _, want := range []string{"↑/k ↓/j navigate", "x remove", "Esc unselect", "q quit"} {
+	for _, want := range []string{"↑/k ↓/j navigate", "x remove", "esc unselect", "q quit"} {
 		if !strings.Contains(plain, want) {
 			t.Fatalf("selected dashboard help does not contain %q:\n%s", want, plain)
 		}
@@ -330,7 +330,7 @@ func TestDashboardHelpShowsOnlyAvailableActions(t *testing.T) {
 
 	model, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
 	plain = ansi.Strip(model.View())
-	if !strings.Contains(plain, "search Surfline") || strings.Contains(plain, "x remove") || strings.Contains(plain, "Esc unselect") {
+	if !strings.Contains(plain, "search Surfline") || strings.Contains(plain, "x remove") || strings.Contains(plain, "esc unselect") {
 		t.Fatalf("dashboard help did not return to browsing actions after Esc:\n%s", plain)
 	}
 }
@@ -366,8 +366,11 @@ func TestLocationViewportScrollsWhileHeaderAndControlsStayPinned(t *testing.T) {
 	if !strings.Contains(lines[len(lines)-2], "↑/k ↓/j navigate") || strings.TrimSpace(lines[len(lines)-1]) != "" {
 		t.Fatalf("controls are not one row above the bottom: %q / %q", lines[len(lines)-2], lines[len(lines)-1])
 	}
-	if !strings.Contains(lines[len(lines)-3], "sorting by: time added") || !strings.Contains(lines[len(lines)-3], "s cycle sort") {
-		t.Fatalf("sort indicator is not directly above the controls: %q", lines[len(lines)-3])
+	if strings.TrimSpace(lines[len(lines)-3]) != "" {
+		t.Fatalf("sort indicator and controls do not have a blank row between them: %q", lines[len(lines)-3])
+	}
+	if !strings.Contains(lines[len(lines)-4], "sorting by: time added") || !strings.Contains(lines[len(lines)-4], "s cycle sort") {
+		t.Fatalf("sort indicator is not above the controls: %q", lines[len(lines)-4])
 	}
 	for _, want := range []string{"First Location", "Second Location"} {
 		if !strings.Contains(plain, want) {
