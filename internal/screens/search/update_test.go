@@ -254,6 +254,30 @@ func TestWindowResizeUpdatesContentAndInputWidths(t *testing.T) {
 	}
 }
 
+func TestSearchControlsAreLowercase(t *testing.T) {
+	t.Parallel()
+
+	model := New(&fakeSearcher{}, &fakeTracker{})
+	assertHelpContains := func(want string) {
+		t.Helper()
+		if got := model.helpView(80); !strings.Contains(got, want) {
+			t.Fatalf("help = %q, want %q", got, want)
+		}
+	}
+
+	assertHelpContains("type to search • esc clear/back • ctrl+c quit")
+
+	model.Pending = true
+	assertHelpContains("keep typing to refine • esc clear • ctrl+c quit")
+
+	model.Pending = false
+	model.Results = []surf.Spot{{ID: "one"}}
+	assertHelpContains("enter select • keep typing to refine • esc clear")
+
+	model.mode = selectingMode
+	assertHelpContains("↑/k ↓/j navigate • enter track • esc edit")
+}
+
 func TestResultKeyboardNavigationIsPreserved(t *testing.T) {
 	t.Parallel()
 

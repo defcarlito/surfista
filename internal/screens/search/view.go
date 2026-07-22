@@ -90,14 +90,14 @@ func (m Model) resultsView(width int) string {
 }
 
 func (m Model) helpView(width int) string {
-	text := "Type to search • Esc clear/back • Ctrl+C quit"
+	text := "type to search • esc clear/back • ctrl+c quit"
 	switch {
 	case m.Selecting():
-		text = "↑/k ↓/j navigate • Enter track • Esc edit"
+		text = "↑/k ↓/j navigate • enter track • esc edit"
 	case m.InResults():
-		text = "Enter select • keep typing to refine • Esc clear"
+		text = "enter select • keep typing to refine • esc clear"
 	case m.Pending || m.Loading:
-		text = "Keep typing to refine • Esc clear • Ctrl+C quit"
+		text = "keep typing to refine • esc clear • ctrl+c quit"
 	}
 	return ui.SearchHelpStyle.Width(width).Render(text)
 }
