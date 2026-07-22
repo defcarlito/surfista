@@ -32,6 +32,12 @@ type forecastDetailRow struct {
 	current   bool
 }
 
+type swellColumnLayout struct {
+	heightWidth    int
+	periodWidth    int
+	directionWidth int
+}
+
 func (m Model) detailsOverlay(dashboard string) string {
 	dialog := m.detailsDialog()
 	if m.terminalWidth <= 0 || m.terminalHeight <= 0 {
@@ -78,8 +84,9 @@ func (m Model) detailsDialog() string {
 	}
 
 	rowViews := make([]string, 0, visibleCount)
+	swellLayout := swellColumnsForRows(rows)
 	for _, row := range rows[offset:end] {
-		rowViews = append(rowViews, m.detailForecastRow(row, contentWidth, cellWidth))
+		rowViews = append(rowViews, m.detailForecastRow(row, contentWidth, cellWidth, swellLayout))
 	}
 	if len(rowViews) == 0 {
 		rowViews = append(rowViews, fitHeight(
@@ -138,11 +145,11 @@ func (m Model) detailCategoryHeader(contentWidth, cellWidth int) string {
 	return lipgloss.NewStyle().Width(contentWidth).Align(lipgloss.Center).Render(header)
 }
 
-func (m Model) detailForecastRow(row forecastDetailRow, contentWidth, cellWidth int) string {
+func (m Model) detailForecastRow(row forecastDetailRow, contentWidth, cellWidth int, swellLayout swellColumnLayout) string {
 	detailsState := m.details[m.detailsSpot.ID]
 	cells := [][]string{
 		surfHeightRowLines(row.forecast, cellWidth),
-		swellRowLines(row.forecast, cellWidth),
+		swellRowLines(row.forecast, cellWidth, swellLayout),
 		windDetailLines(row.details, row.hasDetail, detailsState.loading, detailsState.details.Units),
 		tideDetailLines(detailsState.details, row.forecast.Timestamp, detailsState.loading),
 		temperatureDetailLines(row.details, row.hasDetail, detailsState.loading, detailsState.details.Units),
@@ -313,7 +320,20 @@ func surfHeightRowLines(slot surf.ForecastSlot, width int) []string {
 	return lines[:min(len(lines), detailsCellContentHeight)]
 }
 
-func swellRowLines(slot surf.ForecastSlot, width int) []string {
+func swellColumnsForRows(rows []forecastDetailRow) swellColumnLayout {
+	var layout swellColumnLayout
+	for _, row := range rows {
+		visibleSwells := row.forecast.Swells[:min(len(row.forecast.Swells), detailsCellContentHeight)]
+		for _, swell := range visibleSwells {
+			layout.heightWidth = max(layout.heightWidth, ansi.StringWidth(formatDetailNumber(swell.Height)+"′"))
+			layout.periodWidth = max(layout.periodWidth, ansi.StringWidth(formatDetailNumber(swell.Period)+"s"))
+			layout.directionWidth = max(layout.directionWidth, ansi.StringWidth(compassDirection(swell.Direction)))
+		}
+	}
+	return layout
+}
+
+func swellRowLines(slot surf.ForecastSlot, width int, layout swellColumnLayout) []string {
 	if len(slot.Swells) == 0 {
 		return []string{ui.Muted("unavailable")}
 	}
@@ -325,7 +345,6 @@ func swellRowLines(slot surf.ForecastSlot, width int) []string {
 	}
 	visibleSwells := slot.Swells[:min(len(slot.Swells), detailsCellContentHeight)]
 	values := make([]swellValues, 0, len(visibleSwells))
-	heightWidth, periodWidth, directionWidth := 0, 0, 0
 	for _, swell := range visibleSwells {
 		value := swellValues{
 			height:    formatDetailNumber(swell.Height) + "′",
@@ -333,16 +352,13 @@ func swellRowLines(slot surf.ForecastSlot, width int) []string {
 			direction: compassDirection(swell.Direction),
 		}
 		values = append(values, value)
-		heightWidth = max(heightWidth, ansi.StringWidth(value.height))
-		periodWidth = max(periodWidth, ansi.StringWidth(value.period))
-		directionWidth = max(directionWidth, ansi.StringWidth(value.direction))
 	}
 
 	lines := make([]string, 0, len(values))
 	for _, value := range values {
-		line := lipgloss.NewStyle().Width(heightWidth).Align(lipgloss.Right).Render(value.height) + " " +
-			lipgloss.NewStyle().Width(periodWidth).Align(lipgloss.Right).Render(value.period) + " " +
-			lipgloss.NewStyle().Width(directionWidth).Align(lipgloss.Left).Render(value.direction)
+		line := lipgloss.NewStyle().Width(layout.heightWidth).Align(lipgloss.Right).Render(value.height) + " " +
+			lipgloss.NewStyle().Width(layout.periodWidth).Align(lipgloss.Right).Render(value.period) + " " +
+			lipgloss.NewStyle().Width(layout.directionWidth).Align(lipgloss.Left).Render(value.direction)
 		lines = append(lines, ansi.Truncate(line, width, ""))
 	}
 	return lines

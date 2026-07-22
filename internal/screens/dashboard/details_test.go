@@ -328,14 +328,25 @@ func TestDetailValuesRoundToTenthsAndDescriptionsWrap(t *testing.T) {
 func TestSwellRowsAlignHeightPeriodAndDirectionColumns(t *testing.T) {
 	t.Parallel()
 
-	lines := swellRowLines(surf.ForecastSlot{Swells: []surf.Swell{
-		{Height: 2.6, Period: 15, Direction: 225},
-		{Height: 0.3, Period: 11, Direction: 270},
-		{Height: 1.5, Period: 12, Direction: 202.5},
-		{Height: 1.1, Period: 9, Direction: 270},
-	}}, 20)
-	if len(lines) != 4 {
-		t.Fatalf("swell rows = %d, want 4", len(lines))
+	rows := []forecastDetailRow{
+		{forecast: surf.ForecastSlot{Swells: []surf.Swell{
+			{Height: 2.6, Period: 15, Direction: 225},
+			{Height: 0.3, Period: 11, Direction: 270},
+			{Height: 1, Period: 9, Direction: 270},
+		}}},
+		{forecast: surf.ForecastSlot{Swells: []surf.Swell{
+			{Height: 2.2, Period: 15, Direction: 225},
+			{Height: 1.6, Period: 12, Direction: 202.5},
+			{Height: 0.9, Period: 6, Direction: 225},
+		}}},
+	}
+	layout := swellColumnsForRows(rows)
+	lines := append(
+		swellRowLines(rows[0].forecast, 20, layout),
+		swellRowLines(rows[1].forecast, 20, layout)...,
+	)
+	if len(lines) != 6 {
+		t.Fatalf("swell rows = %d, want 6", len(lines))
 	}
 
 	wantWidth := ansi.StringWidth(lines[0])
