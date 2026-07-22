@@ -12,3 +12,9 @@ type SpotSearcher interface {
 type ForecastProvider interface {
 	Forecast(ctx context.Context, spotID string) (Forecast, error)
 }
+
+// ForecastDetailsProvider fetches the richer, on-demand forecast data shown
+// when a dashboard location is opened.
+type ForecastDetailsProvider interface {
+	ForecastDetails(ctx context.Context, spotID string) (ForecastDetails, error)
+}

@@ -21,7 +21,10 @@ func TestSurflineForecastMergesWaveAndRatingSlots(t *testing.T) {
 		case "/kbyg/spots/forecasts/wave":
 			body = `{"associated":{"utcOffset":-10},"data":{"wave":[
 				{"timestamp":200,"surf":{"min":2,"max":3,"plus":true,"humanRelation":"2-3 ft +"}},
-				{"timestamp":100,"surf":{"min":1,"max":2,"plus":false,"humanRelation":"1-2 ft"}},
+				{"timestamp":100,"surf":{"min":1,"max":2,"plus":false,"humanRelation":"1-2 ft"},"swells":[
+					{"height":2.7,"period":14,"direction":216},
+					{"height":0,"period":8,"direction":90}
+				]},
 				{"timestamp":300,"surf":{"min":4,"max":5}}
 			]}}`
 		case "/kbyg/spots/forecasts/rating":
@@ -55,6 +58,9 @@ func TestSurflineForecastMergesWaveAndRatingSlots(t *testing.T) {
 	}
 	if got := forecast.Slots[0]; got.Timestamp.Unix() != 100 || got.Rating != "Poor" || got.SurfHeight.HumanRelation != "1-2 ft" {
 		t.Fatalf("first slot = %+v", got)
+	}
+	if got := forecast.Slots[0].Swells; len(got) != 1 || got[0].Height != 2.7 || got[0].Period != 14 || got[0].Direction != 216 {
+		t.Fatalf("first slot swells = %+v", got)
 	}
 	if got := forecast.Slots[1]; got.Timestamp.Unix() != 200 || got.Rating != "Fair to Good" || !got.SurfHeight.Plus {
 		t.Fatalf("second slot = %+v", got)
@@ -106,6 +112,80 @@ func TestSurflineForecastUsesRawHeightFallback(t *testing.T) {
 	got := forecast.Slots[0]
 	if got.SurfHeight.Min != 1.25 || got.SurfHeight.Max != 2.75 || got.Rating != "Fair" {
 		t.Fatalf("slot = %+v", got)
+	}
+}
+
+func TestSurflineForecastDetailsMergeCurrentConditions(t *testing.T) {
+	t.Parallel()
+
+	requests := make(chan *http.Request, 3)
+	httpClient := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		requests <- r.Clone(context.Background())
+		var body string
+		switch r.URL.Path {
+		case "/kbyg/spots/forecasts/wind":
+			body = `{"associated":{"utcOffset":-10,"units":{"windSpeed":"KTS"}},"data":{"wind":[
+				{"timestamp":100,"speed":3,"gust":4,"direction":216,"directionType":"CROSS_SHORE"}
+			]}}`
+		case "/kbyg/spots/forecasts/tides":
+			body = `{"associated":{"units":{"tideHeight":"FT"}},"data":{"tides":[
+				{"timestamp":50,"type":"LOW","height":1.1},
+				{"timestamp":150,"type":"HIGH","height":5.6}
+			]}}`
+		case "/kbyg/spots/forecasts/weather":
+			body = `{"associated":{"units":{"temperature":"F"}},"data":{"weather":[
+				{"timestamp":100,"temperature":86}
+			]}}`
+		default:
+			return forecastHTTPResponse(http.StatusNotFound, "text/plain", "not found"), nil
+		}
+		return forecastHTTPResponse(http.StatusOK, "application/json", body), nil
+	})}
+
+	provider, err := NewSurflineForecastProvider("https://example.test", httpClient)
+	if err != nil {
+		t.Fatal(err)
+	}
+	details, err := provider.ForecastDetails(context.Background(), " honolua-id ")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if details.SpotID != "honolua-id" || details.UTCOffset != -10*time.Hour {
+		t.Fatalf("details identity = %+v", details)
+	}
+	if details.Units.WindSpeed != "KTS" || details.Units.TideHeight != "FT" || details.Units.Temperature != "F" {
+		t.Fatalf("details units = %+v", details.Units)
+	}
+	if len(details.Slots) != 1 {
+		t.Fatalf("detail slots = %+v, want one", details.Slots)
+	}
+	slot := details.Slots[0]
+	if slot.Wind.Speed != 3 || slot.Wind.Gust != 4 || slot.Wind.DirectionType != "CROSS_SHORE" {
+		t.Fatalf("wind = %+v", slot.Wind)
+	}
+	if slot.Temperature == nil || *slot.Temperature != 86 {
+		t.Fatalf("temperature = %v", slot.Temperature)
+	}
+	if len(details.Tides) != 2 || details.Tides[0].Type != "LOW" || details.Tides[1].Type != "HIGH" {
+		t.Fatalf("tides = %+v", details.Tides)
+	}
+
+	seen := make(map[string]*http.Request)
+	for range 3 {
+		request := <-requests
+		seen[request.URL.Path] = request
+	}
+	for _, kind := range []string{"wind", "tides", "weather"} {
+		path := "/kbyg/spots/forecasts/" + kind
+		request := seen[path]
+		if request == nil {
+			t.Fatalf("missing %s request", kind)
+		}
+		query := request.URL.Query()
+		if query.Get("spotId") != "honolua-id" || query.Get("days") != "2" || query.Get("intervalHours") != "3" {
+			t.Errorf("%s query = %v", path, query)
+		}
 	}
 }
 

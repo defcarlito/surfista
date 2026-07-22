@@ -28,6 +28,7 @@ type ForecastSlot struct {
 	Timestamp  time.Time
 	Rating     string
 	SurfHeight SurfHeight
+	Swells     []Swell
 }
 
 type SurfHeight struct {
@@ -35,4 +36,45 @@ type SurfHeight struct {
 	Max           float64
 	Plus          bool
 	HumanRelation string
+}
+
+// ForecastDetails contains the richer forecast data loaded only when a user
+// opens a location's dashboard detail popover.
+type ForecastDetails struct {
+	SpotID    string
+	UTCOffset time.Duration
+	Units     ForecastUnits
+	Slots     []ForecastDetailSlot
+	Tides     []TidePoint
+}
+
+type ForecastUnits struct {
+	WindSpeed   string
+	TideHeight  string
+	Temperature string
+}
+
+type ForecastDetailSlot struct {
+	Timestamp   time.Time
+	Wind        Wind
+	Temperature *float64
+}
+
+type Swell struct {
+	Height    float64
+	Period    float64
+	Direction float64
+}
+
+type Wind struct {
+	Speed         float64
+	Gust          float64
+	Direction     float64
+	DirectionType string
+}
+
+type TidePoint struct {
+	Timestamp time.Time
+	Type      string
+	Height    float64
 }

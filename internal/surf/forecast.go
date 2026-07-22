@@ -123,6 +123,7 @@ func (p *SurflineForecastProvider) Forecast(ctx context.Context, spotID string) 
 				Plus:          point.Surf.Plus,
 				HumanRelation: point.Surf.HumanRelation,
 			},
+			Swells: mapSurflineSwells(point.Swells),
 		})
 	}
 
@@ -143,6 +144,146 @@ func (p *SurflineForecastProvider) Forecast(ctx context.Context, spotID string) 
 		UTCOffset: time.Duration(offsetHours * float64(time.Hour)),
 		Slots:     slots,
 	}, nil
+}
+
+func (p *SurflineForecastProvider) ForecastDetails(ctx context.Context, spotID string) (ForecastDetails, error) {
+	spotID = strings.TrimSpace(spotID)
+	if spotID == "" {
+		return ForecastDetails{}, ErrEmptySpotID
+	}
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	type windResult struct {
+		response windForecastResponse
+		err      error
+	}
+	type tideResult struct {
+		response tideForecastResponse
+		err      error
+	}
+	type weatherResult struct {
+		response weatherForecastResponse
+		err      error
+	}
+
+	winds := make(chan windResult, 1)
+	tides := make(chan tideResult, 1)
+	weather := make(chan weatherResult, 1)
+	go func() {
+		var response windForecastResponse
+		err := p.getForecast(ctx, "wind", spotID, &response)
+		winds <- windResult{response: response, err: err}
+	}()
+	go func() {
+		var response tideForecastResponse
+		err := p.getForecast(ctx, "tides", spotID, &response)
+		tides <- tideResult{response: response, err: err}
+	}()
+	go func() {
+		var response weatherForecastResponse
+		err := p.getForecast(ctx, "weather", spotID, &response)
+		weather <- weatherResult{response: response, err: err}
+	}()
+
+	wind := <-winds
+	tide := <-tides
+	conditions := <-weather
+	for _, result := range []struct {
+		kind string
+		err  error
+	}{
+		{kind: "wind", err: wind.err},
+		{kind: "tides", err: tide.err},
+		{kind: "weather", err: conditions.err},
+	} {
+		if result.err != nil {
+			cancel()
+			return ForecastDetails{}, result.err
+		}
+	}
+
+	slotsByTimestamp := make(map[int64]ForecastDetailSlot, len(wind.response.Data.Wind)+len(conditions.response.Data.Weather))
+	for _, point := range wind.response.Data.Wind {
+		slotsByTimestamp[point.Timestamp] = ForecastDetailSlot{
+			Timestamp: time.Unix(point.Timestamp, 0).UTC(),
+			Wind: Wind{
+				Speed:         point.Speed,
+				Gust:          point.Gust,
+				Direction:     point.Direction,
+				DirectionType: point.DirectionType,
+			},
+		}
+	}
+	for _, point := range conditions.response.Data.Weather {
+		slot := slotsByTimestamp[point.Timestamp]
+		slot.Timestamp = time.Unix(point.Timestamp, 0).UTC()
+		slot.Temperature = point.Temperature
+		slotsByTimestamp[point.Timestamp] = slot
+	}
+
+	slots := make([]ForecastDetailSlot, 0, len(slotsByTimestamp))
+	for _, slot := range slotsByTimestamp {
+		slots = append(slots, slot)
+	}
+	sort.Slice(slots, func(i, j int) bool {
+		return slots[i].Timestamp.Before(slots[j].Timestamp)
+	})
+
+	tidePoints := make([]TidePoint, 0, len(tide.response.Data.Tides))
+	for _, point := range tide.response.Data.Tides {
+		tidePoints = append(tidePoints, TidePoint{
+			Timestamp: time.Unix(point.Timestamp, 0).UTC(),
+			Type:      strings.ToUpper(point.Type),
+			Height:    point.Height,
+		})
+	}
+	sort.Slice(tidePoints, func(i, j int) bool {
+		return tidePoints[i].Timestamp.Before(tidePoints[j].Timestamp)
+	})
+
+	associated := wind.response.Associated
+	for _, candidate := range []forecastAssociated{
+		tide.response.Associated,
+		conditions.response.Associated,
+	} {
+		if associated.UTCOffset == 0 && candidate.UTCOffset != 0 {
+			associated.UTCOffset = candidate.UTCOffset
+		}
+		associated.Units.merge(candidate.Units)
+	}
+
+	return ForecastDetails{
+		SpotID:    spotID,
+		UTCOffset: time.Duration(associated.UTCOffset * float64(time.Hour)),
+		Units: ForecastUnits{
+			WindSpeed:   associated.Units.WindSpeed,
+			TideHeight:  associated.Units.TideHeight,
+			Temperature: associated.Units.Temperature,
+		},
+		Slots: slots,
+		Tides: tidePoints,
+	}, nil
+}
+
+func mapSurflineSwells(points []struct {
+	Height    float64 `json:"height"`
+	Period    float64 `json:"period"`
+	Direction float64 `json:"direction"`
+}) []Swell {
+	swells := make([]Swell, 0, len(points))
+	for _, point := range points {
+		if point.Height <= 0 {
+			continue
+		}
+		swells = append(swells, Swell{
+			Height:    point.Height,
+			Period:    point.Period,
+			Direction: point.Direction,
+		})
+	}
+	return swells
 }
 
 func (p *SurflineForecastProvider) getForecast(ctx context.Context, kind, spotID string, destination any) error {
@@ -197,7 +338,30 @@ func (p *SurflineForecastProvider) getForecast(ctx context.Context, kind, spotID
 }
 
 type forecastAssociated struct {
-	UTCOffset float64 `json:"utcOffset"`
+	UTCOffset float64       `json:"utcOffset"`
+	Units     forecastUnits `json:"units"`
+}
+
+type forecastUnits struct {
+	WaveHeight  string `json:"waveHeight"`
+	WindSpeed   string `json:"windSpeed"`
+	TideHeight  string `json:"tideHeight"`
+	Temperature string `json:"temperature"`
+}
+
+func (u *forecastUnits) merge(other forecastUnits) {
+	if u.WaveHeight == "" {
+		u.WaveHeight = other.WaveHeight
+	}
+	if u.WindSpeed == "" {
+		u.WindSpeed = other.WindSpeed
+	}
+	if u.TideHeight == "" {
+		u.TideHeight = other.TideHeight
+	}
+	if u.Temperature == "" {
+		u.Temperature = other.Temperature
+	}
 }
 
 type waveForecastResponse struct {
@@ -215,8 +379,51 @@ type waveForecastResponse struct {
 					Max float64 `json:"max"`
 				} `json:"raw"`
 			} `json:"surf"`
+			Swells []struct {
+				Height    float64 `json:"height"`
+				Period    float64 `json:"period"`
+				Direction float64 `json:"direction"`
+			} `json:"swells"`
 		} `json:"wave"`
 	} `json:"data"`
+}
+
+type windForecastResponse struct {
+	Associated forecastAssociated `json:"associated"`
+	Data       struct {
+		Wind []windForecastPoint `json:"wind"`
+	} `json:"data"`
+}
+
+type windForecastPoint struct {
+	Timestamp     int64   `json:"timestamp"`
+	Speed         float64 `json:"speed"`
+	Gust          float64 `json:"gust"`
+	Direction     float64 `json:"direction"`
+	DirectionType string  `json:"directionType"`
+}
+
+type tideForecastResponse struct {
+	Associated forecastAssociated `json:"associated"`
+	Data       struct {
+		Tides []struct {
+			Timestamp int64   `json:"timestamp"`
+			Type      string  `json:"type"`
+			Height    float64 `json:"height"`
+		} `json:"tides"`
+	} `json:"data"`
+}
+
+type weatherForecastResponse struct {
+	Associated forecastAssociated `json:"associated"`
+	Data       struct {
+		Weather []weatherForecastPoint `json:"weather"`
+	} `json:"data"`
+}
+
+type weatherForecastPoint struct {
+	Timestamp   int64    `json:"timestamp"`
+	Temperature *float64 `json:"temperature"`
 }
 
 type ratingForecastResponse struct {
