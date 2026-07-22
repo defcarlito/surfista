@@ -31,7 +31,7 @@ func (s forecastState) usable() bool {
 }
 
 func (s forecastDetailsState) usable() bool {
-	return !s.updatedAt.IsZero() || s.details.SpotID != "" || len(s.details.Slots) > 0 || len(s.details.Tides) > 0
+	return !s.updatedAt.IsZero() || s.details.SpotID != "" || len(s.details.Slots) > 0 || len(s.details.Tides) > 0 || len(s.details.Sunlight) > 0
 }
 
 type Remover interface {

@@ -152,13 +152,104 @@ func (m Model) forecastHeader(width int) string {
 		headerCells = append(headerCells, tableCell(formatDashboardHour(hour), slotWidth))
 		nowCells = append(nowCells, tableCell("", slotWidth))
 	}
-	dateRow := " " + strings.Join(dateCells, " ") + " "
+	dateRow := m.forecastAnnotationRow(" "+strings.Join(dateCells, " ")+" ", slotWidth)
 	header := " " + strings.Join(headerCells, " ") + " "
 	nowRow := " " + strings.Join(nowCells, " ") + " "
 	cardWidth := slotWidth*len(dashboardHours) + gridBorderWidth
 	return lipgloss.NewStyle().Width(width).Align(lipgloss.Center).Render(
 		lipgloss.NewStyle().Width(cardWidth).Render(lipgloss.JoinVertical(lipgloss.Left, dateRow, header, nowRow)),
 	)
+}
+
+func (m Model) forecastAnnotationRow(dateRow string, slotWidth int) string {
+	cardWidth := slotWidth*len(dashboardHours) + gridBorderWidth
+	day, utcOffset, ok := m.dashboardSunlightDay()
+	if !ok {
+		return dateRow
+	}
+
+	layers := []*lipgloss.Layer{lipgloss.NewLayer(dateRow).Z(0)}
+	for _, marker := range []struct {
+		timestamp time.Time
+		arrow     string
+	}{
+		{timestamp: day.Sunrise, arrow: "↑"},
+		{timestamp: day.Sunset, arrow: "↓"},
+	} {
+		if marker.timestamp.IsZero() {
+			continue
+		}
+		label := marker.arrow + formatDashboardSunlightTime(marker.timestamp, utcOffset)
+		x := dashboardTimePosition(marker.timestamp, utcOffset, slotWidth) - sunlightLabelPivot(label)
+		x = max(0, min(x, cardWidth-ansi.StringWidth(label)))
+		layers = append(layers, lipgloss.NewLayer(ui.DashboardSubtitleStyle.Render(label)).X(x).Z(1))
+	}
+
+	return lipgloss.NewCanvas(cardWidth, 1).
+		Compose(lipgloss.NewCompositor(layers...)).
+		Render()
+}
+
+func sunlightLabelPivot(label string) int {
+	digitsSeen := 0
+	for index := len(label) - 1; index >= 0; index-- {
+		if label[index] >= '0' && label[index] <= '9' {
+			digitsSeen++
+			if digitsSeen == 2 {
+				return ansi.StringWidth(label[:index])
+			}
+		}
+	}
+	return 0
+}
+
+func (m Model) dashboardSunlightDay() (surf.SunlightDay, time.Duration, bool) {
+	for _, spot := range m.spots {
+		forecast := m.forecasts[spot.ID].forecast
+		if len(forecast.Slots) == 0 {
+			continue
+		}
+		targetDate := localDate(m.now(), forecast.UTCOffset).AddDate(0, 0, m.forecastDayOffset)
+		for _, day := range m.details[spot.ID].details.Sunlight {
+			reference := firstSunlightTime(day)
+			if !reference.IsZero() && localDate(reference, forecast.UTCOffset).Equal(targetDate) {
+				return day, forecast.UTCOffset, true
+			}
+		}
+		return surf.SunlightDay{}, 0, false
+	}
+	return surf.SunlightDay{}, 0, false
+}
+
+func firstSunlightTime(day surf.SunlightDay) time.Time {
+	for _, candidate := range []time.Time{day.Sunrise, day.Sunset, day.Dawn, day.Dusk} {
+		if !candidate.IsZero() {
+			return candidate
+		}
+	}
+	return time.Time{}
+}
+
+func dashboardTimePosition(timestamp time.Time, utcOffset time.Duration, slotWidth int) int {
+	local := timestamp.UTC().Add(utcOffset)
+	minutes := float64(local.Hour()*60+local.Minute()) + float64(local.Second())/60
+	startCenter := 1 + float64(slotWidth-1)/2
+	threeHourWidth := float64(slotWidth + 1)
+	return int(math.Round(startCenter + minutes/(3*60)*threeHourWidth))
+}
+
+func formatDashboardSunlightTime(timestamp time.Time, utcOffset time.Duration) string {
+	local := timestamp.UTC().Add(utcOffset)
+	hour := local.Hour()
+	suffix := "a"
+	if hour >= 12 {
+		suffix = "p"
+	}
+	hour %= 12
+	if hour == 0 {
+		hour = 12
+	}
+	return fmt.Sprintf("%d:%02d%s", hour, local.Minute(), suffix)
 }
 
 func dashboardSlotWidth(width int) int {

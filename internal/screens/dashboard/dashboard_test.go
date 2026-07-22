@@ -300,6 +300,63 @@ func TestDashboardStartsWithForecastDatesAndHours(t *testing.T) {
 	}
 }
 
+func TestDashboardPositionsExactSunriseAndSunsetAboveHours(t *testing.T) {
+	t.Parallel()
+
+	const width = 80
+	now := time.Date(2026, time.July, 22, 15, 0, 0, 0, time.UTC)
+	spot := surf.Spot{ID: "honolua", Name: "Honolua Bay"}
+	model := New(nil, nil, []surf.Spot{spot}, nil)
+	model.now = func() time.Time { return now }
+	model.forecasts[spot.ID] = forecastState{forecast: surf.Forecast{
+		SpotID: spot.ID,
+		Slots: []surf.ForecastSlot{
+			{Timestamp: time.Date(2026, time.July, 22, 6, 0, 0, 0, time.UTC)},
+			{Timestamp: time.Date(2026, time.July, 23, 6, 0, 0, 0, time.UTC)},
+		},
+	}}
+	model.details[spot.ID] = forecastDetailsState{details: surf.ForecastDetails{
+		SpotID: spot.ID,
+		Sunlight: []surf.SunlightDay{
+			{
+				Sunrise: time.Date(2026, time.July, 22, 6, 30, 0, 0, time.UTC),
+				Sunset:  time.Date(2026, time.July, 22, 20, 12, 0, 0, time.UTC),
+			},
+			{
+				Sunrise: time.Date(2026, time.July, 23, 6, 31, 0, 0, time.UTC),
+				Sunset:  time.Date(2026, time.July, 23, 20, 11, 0, 0, time.UTC),
+			},
+		},
+	}}
+
+	header := model.forecastHeader(width)
+	annotation := strings.Split(ansi.Strip(header), "\n")[0]
+	if !strings.Contains(annotation, "7/22") || !strings.Contains(annotation, "7/23") ||
+		!strings.Contains(annotation, "↑6:30a") || !strings.Contains(annotation, "↓8:12p") {
+		t.Fatalf("forecast annotation row is missing dates or daylight times:\n%s", annotation)
+	}
+
+	slotWidth := dashboardSlotWidth(width)
+	cardWidth := slotWidth*len(dashboardHours) + gridBorderWidth
+	headerOffset := (width - cardWidth) / 2
+	if got, want := sunlightPivotColumn(annotation, "↑6:30a"), headerOffset+dashboardTimePosition(model.details[spot.ID].details.Sunlight[0].Sunrise, 0, slotWidth); got != want {
+		t.Fatalf("sunrise time pivot column = %d, want exact-time column %d:\n%s", got, want, annotation)
+	}
+	if got, want := sunlightPivotColumn(annotation, "↓8:12p"), headerOffset+dashboardTimePosition(model.details[spot.ID].details.Sunlight[0].Sunset, 0, slotWidth); got != want {
+		t.Fatalf("sunset time pivot column = %d, want exact-time column %d:\n%s", got, want, annotation)
+	}
+	styledSunrise := ui.DashboardSubtitleStyle.Render("↑6:30a")
+	if !strings.Contains(header, styledSunrise) {
+		t.Fatal("sunrise marker does not use the same style as the dashboard dates")
+	}
+
+	model.forecastDayOffset = 1
+	nextAnnotation := strings.Split(ansi.Strip(model.forecastHeader(width)), "\n")[0]
+	if !strings.Contains(nextAnnotation, "↑6:31a") || !strings.Contains(nextAnnotation, "↓8:11p") || strings.Contains(nextAnnotation, "↑6:30a") {
+		t.Fatalf("next-day header does not use that day's daylight times:\n%s", nextAnnotation)
+	}
+}
+
 func TestDashboardDayNavigationUsesAvailableForecastDates(t *testing.T) {
 	t.Parallel()
 
@@ -759,6 +816,14 @@ func lineContaining(lines []string, value string) int {
 		}
 	}
 	return -1
+}
+
+func sunlightPivotColumn(line, label string) int {
+	index := strings.Index(line, label)
+	if index < 0 {
+		return -1
+	}
+	return ansi.StringWidth(line[:index]) + sunlightLabelPivot(label)
 }
 
 func standaloneIndicatorLine(lines []string, indicator string) int {
