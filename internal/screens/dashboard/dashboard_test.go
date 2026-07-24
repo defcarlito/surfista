@@ -127,6 +127,85 @@ func TestCachedForecastsOpenDashboardWhileRefreshingInBackground(t *testing.T) {
 	}
 }
 
+func TestRRefreshesAllCachedForecastDataWithoutClearingFallback(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.July, 23, 12, 0, 0, 0, time.UTC)
+	updatedAt := now.Add(-2 * time.Hour)
+	spots := []surf.Spot{
+		{ID: "first", Name: "First"},
+		{ID: "second", Name: "Second"},
+	}
+	cache := &fakeForecastCache{entries: map[string]surf.ForecastCacheEntry{}}
+	for _, spot := range spots {
+		cache.entries[spot.ID] = surf.ForecastCacheEntry{
+			SpotID: spot.ID,
+			Forecast: surf.Forecast{SpotID: spot.ID, Slots: []surf.ForecastSlot{{
+				Rating: "Cached " + spot.Name,
+			}}},
+			ForecastUpdatedAt: updatedAt,
+			Details:           surf.ForecastDetails{SpotID: spot.ID, Units: surf.ForecastUnits{WindSpeed: "cached"}},
+			DetailsUpdatedAt:  updatedAt,
+		}
+	}
+	provider := &fakeForecastProvider{
+		forecast: surf.Forecast{Slots: []surf.ForecastSlot{{Rating: "Fresh"}}},
+		details:  surf.ForecastDetails{Units: surf.ForecastUnits{WindSpeed: "KTS"}},
+	}
+	model := New(provider, cache, spots, nil)
+	model.now = func() time.Time { return now }
+	model.selectedIndex = 1
+	for _, spot := range spots {
+		model, _ = model.Update(ForecastLoadedMsg{SpotID: spot.ID, Err: errors.New("initial forecast failed")})
+		model, _ = model.Update(ForecastDetailsLoadedMsg{SpotID: spot.ID, Err: errors.New("initial details failed")})
+	}
+
+	model, cmd := model.Update(dashboardKey('r'))
+	if cmd == nil {
+		t.Fatal("r returned no refresh command")
+	}
+	if model.selectedIndex != 1 {
+		t.Fatalf("refresh changed selection to %d, want 1", model.selectedIndex)
+	}
+	for _, spot := range spots {
+		forecast := model.forecasts[spot.ID]
+		details := model.details[spot.ID]
+		if !forecast.loading || forecast.err != nil || forecast.forecast.Slots[0].Rating != "Cached "+spot.Name {
+			t.Fatalf("refresh cleared cached forecast for %s: %+v", spot.ID, forecast)
+		}
+		if !details.loading || details.err != nil || details.details.Units.WindSpeed != "cached" {
+			t.Fatalf("refresh cleared cached details for %s: %+v", spot.ID, details)
+		}
+	}
+	if _, duplicate := model.Update(dashboardKey('r')); duplicate != nil {
+		t.Fatal("r started duplicate requests while refresh was already in flight")
+	}
+
+	messages := commandMessages(t, cmd)
+	if len(messages) != len(spots)*2 {
+		t.Fatalf("refresh messages = %d, want %d", len(messages), len(spots)*2)
+	}
+	if got := strings.Join(provider.spotIDs, ","); got != "first,second" {
+		t.Fatalf("forecast refresh spot IDs = %q, want first,second", got)
+	}
+	if got := strings.Join(provider.detailSpotIDs, ","); got != "first,second" {
+		t.Fatalf("details refresh spot IDs = %q, want first,second", got)
+	}
+	for _, message := range messages {
+		model, _ = model.Update(message)
+	}
+	for _, spot := range spots {
+		forecast := model.forecasts[spot.ID]
+		details := model.details[spot.ID]
+		if forecast.loading || forecast.err != nil || forecast.forecast.Slots[0].Rating != "Fresh" || forecast.updatedAt != now {
+			t.Fatalf("refreshed forecast for %s = %+v", spot.ID, forecast)
+		}
+		if details.loading || details.err != nil || details.details.Units.WindSpeed != "KTS" || details.updatedAt != now {
+			t.Fatalf("refreshed details for %s = %+v", spot.ID, details)
+		}
+	}
+}
+
 func TestFailedRefreshKeepsCachedForecastAndShowsLastUpdated(t *testing.T) {
 	t.Parallel()
 
@@ -682,10 +761,10 @@ func TestLocationSelectionStartsEmptyAndMovesWithJK(t *testing.T) {
 func TestDashboardHelpShowsOnlyAvailableActions(t *testing.T) {
 	t.Parallel()
 
-	model := New(nil, nil, []surf.Spot{{ID: "honolua", Name: "Honolua Bay"}}, nil)
+	model := New(&fakeForecastProvider{}, nil, []surf.Spot{{ID: "honolua", Name: "Honolua Bay"}}, nil)
 	model, _ = model.Update(tea.WindowSizeMsg{Width: 80, Height: 20})
 	plain := ansi.Strip(model.View())
-	for _, want := range []string{"←/→/h/l day", "↑/↓/j/k", "s sort", "/ search", "q quit"} {
+	for _, want := range []string{"←/→/h/l day", "↑/↓/j/k", "s sort", "r refresh", "/ search", "q quit"} {
 		if !strings.Contains(plain, want) {
 			t.Fatalf("unselected dashboard help does not contain %q:\n%s", want, plain)
 		}
@@ -704,7 +783,7 @@ func TestDashboardHelpShowsOnlyAvailableActions(t *testing.T) {
 
 	model, _ = model.Update(dashboardKey('j'))
 	plain = ansi.Strip(model.View())
-	for _, want := range []string{"←/→/h/l day", "↑/↓/j/k", "s sort", "enter", "x remove", "esc", "q quit"} {
+	for _, want := range []string{"←/→/h/l day", "↑/↓/j/k", "s sort", "r refresh", "enter", "x remove", "esc", "q quit"} {
 		if !strings.Contains(plain, want) {
 			t.Fatalf("selected dashboard help does not contain %q:\n%s", want, plain)
 		}
@@ -715,7 +794,7 @@ func TestDashboardHelpShowsOnlyAvailableActions(t *testing.T) {
 
 	model, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
 	plain = ansi.Strip(model.View())
-	if !strings.Contains(plain, "/ search") || strings.Contains(plain, "x remove") || strings.Contains(plain, "• esc •") {
+	if !strings.Contains(plain, "r refresh") || !strings.Contains(plain, "/ search") || strings.Contains(plain, "x remove") || strings.Contains(plain, "• esc •") {
 		t.Fatalf("dashboard help did not return to browsing actions after Esc:\n%s", plain)
 	}
 }

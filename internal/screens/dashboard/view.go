@@ -68,21 +68,30 @@ func (m Model) dashboardHeader(width int) string {
 }
 
 func (m Model) dashboardFooter(width int) string {
-	helpText := dashboardBrowseHelp
+	browseHelp := dashboardBrowseHelp
+	selectHelp := dashboardSelectHelp
+	urlHelp := dashboardURLHelp
+	if m.canRefresh() {
+		browseHelp = strings.Replace(browseHelp, "s sort", "s sort • r refresh", 1)
+		selectHelp = strings.Replace(selectHelp, "s sort", "s sort • r refresh", 1)
+		urlHelp = strings.Replace(urlHelp, "s sort", "s sort • r refresh", 1)
+	}
+
+	helpText := browseHelp
 	if m.HasSelection() {
-		helpText = dashboardSelectHelp
+		helpText = selectHelp
 	}
 	if m.CanOpenSelectionURL() {
-		helpText = dashboardURLHelp
+		helpText = urlHelp
 	}
 	if m.detailsOpen {
 		helpText = ""
 	}
 	help := ui.DashboardHelpStyle.Width(width).Render(helpText)
 	maxHelpHeight := max(
-		lipgloss.Height(ui.DashboardHelpStyle.Width(width).Render(dashboardBrowseHelp)),
-		lipgloss.Height(ui.DashboardHelpStyle.Width(width).Render(dashboardSelectHelp)),
-		lipgloss.Height(ui.DashboardHelpStyle.Width(width).Render(dashboardURLHelp)),
+		lipgloss.Height(ui.DashboardHelpStyle.Width(width).Render(browseHelp)),
+		lipgloss.Height(ui.DashboardHelpStyle.Width(width).Render(selectHelp)),
+		lipgloss.Height(ui.DashboardHelpStyle.Width(width).Render(urlHelp)),
 	)
 	help = fitHeight(help, maxHelpHeight)
 	return lipgloss.JoinVertical(lipgloss.Left, help, "")

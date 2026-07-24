@@ -138,6 +138,8 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m, m.openSelectedDetails()
 		case "s":
 			return m, m.cycleSort()
+		case "r":
+			return m, m.refresh()
 		case "u":
 			return m, m.openSelectedURLCmd()
 		case "x":

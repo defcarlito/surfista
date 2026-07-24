@@ -191,6 +191,38 @@ func (m Model) Init() tea.Cmd {
 	return tea.Batch(commands...)
 }
 
+func (m Model) canRefresh() bool {
+	return len(m.spots) > 0 && (m.provider != nil || m.detailsProvider != nil)
+}
+
+func (m *Model) refresh() tea.Cmd {
+	commands := make([]tea.Cmd, 0, len(m.spots)*2)
+	for _, spot := range m.spots {
+		if m.provider != nil {
+			state := m.forecasts[spot.ID]
+			if !state.loading {
+				state.loading = true
+				state.err = nil
+				m.forecasts[spot.ID] = state
+				commands = append(commands, m.fetchForecast(spot.ID))
+			}
+		}
+		if m.detailsProvider != nil {
+			state := m.details[spot.ID]
+			if !state.loading {
+				state.loading = true
+				state.err = nil
+				m.details[spot.ID] = state
+				commands = append(commands, m.fetchForecastDetails(spot.ID))
+			}
+		}
+	}
+	if len(commands) == 0 {
+		return nil
+	}
+	return tea.Batch(commands...)
+}
+
 // PendingForecasts reports how many favorite forecasts have not resolved yet.
 func (m Model) PendingForecasts() int {
 	pending := 0
