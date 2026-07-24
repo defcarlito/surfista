@@ -140,7 +140,7 @@ func TestCompleteForecastCacheShowsInitialRefreshProgress(t *testing.T) {
 	if model.current != loadingScreen || model.initialForecasts != 2 {
 		t.Fatalf("cached initial state = screen %v loads %d, want loading screen with 2 refreshes", model.current, model.initialForecasts)
 	}
-	if loadingView := ansi.Strip(model.loading.View()); !strings.Contains(loadingView, "Fetching favorite forecasts… 0/2") {
+	if loadingView := ansi.Strip(model.loading.View()); !strings.Contains(loadingView, "Locations loaded 0/1") {
 		t.Fatalf("cached startup does not show initial fetch progress:\n%s", loadingView)
 	}
 	if model.Init() == nil {
@@ -152,7 +152,8 @@ func TestCompleteForecastCacheShowsInitialRefreshProgress(t *testing.T) {
 	if updated.current != loadingScreen {
 		t.Fatal("cached startup opened the dashboard before detail refresh completed")
 	}
-	if loadingView := ansi.Strip(updated.loading.View()); !strings.Contains(loadingView, "Fetching favorite forecasts… 1/2") {
+	if loadingView := ansi.Strip(updated.loading.View()); !strings.Contains(loadingView, "Fetching forecasts 0/1") ||
+		strings.Contains(loadingView, "Locations loaded") {
 		t.Fatalf("cached startup did not advance fetch progress:\n%s", loadingView)
 	}
 

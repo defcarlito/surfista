@@ -241,6 +241,22 @@ func (m Model) PendingInitialFetches() int {
 	return pending
 }
 
+// InitialFetchProgress reports resolved base forecasts and forecast details
+// separately so the loading screen can present them as distinct phases.
+func (m Model) InitialFetchProgress() (locationsLoaded, forecastsLoaded int) {
+	for _, state := range m.forecasts {
+		if !state.loading {
+			locationsLoaded++
+		}
+	}
+	for _, state := range m.details {
+		if !state.loading {
+			forecastsLoaded++
+		}
+	}
+	return locationsLoaded, forecastsLoaded
+}
+
 // Add makes a newly tracked spot visible immediately and starts its forecast.
 func (m *Model) Add(spot surf.Spot) tea.Cmd {
 	for _, tracked := range m.spots {

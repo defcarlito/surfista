@@ -127,6 +127,37 @@ func TestCachedForecastsStillCountPendingInitialRefreshes(t *testing.T) {
 	}
 }
 
+func TestInitialFetchProgressCountsLocationsAndForecasts(t *testing.T) {
+	t.Parallel()
+
+	spots := []surf.Spot{{ID: "first"}, {ID: "second"}}
+	model := New(&fakeForecastProvider{}, nil, spots, nil)
+
+	if locations, forecasts := model.InitialFetchProgress(); locations != 0 || forecasts != 0 {
+		t.Fatalf("initial fetch progress = locations %d, forecasts %d; want 0 and 0", locations, forecasts)
+	}
+
+	model, _ = model.Update(ForecastLoadedMsg{SpotID: "first"})
+	if locations, forecasts := model.InitialFetchProgress(); locations != 1 || forecasts != 0 {
+		t.Fatalf("progress after one location = locations %d, forecasts %d; want 1 and 0", locations, forecasts)
+	}
+
+	model, _ = model.Update(ForecastLoadedMsg{SpotID: "second"})
+	if locations, forecasts := model.InitialFetchProgress(); locations != 2 || forecasts != 0 {
+		t.Fatalf("progress after all locations = locations %d, forecasts %d; want 2 and 0", locations, forecasts)
+	}
+
+	model, _ = model.Update(ForecastDetailsLoadedMsg{SpotID: "first"})
+	if locations, forecasts := model.InitialFetchProgress(); locations != 2 || forecasts != 1 {
+		t.Fatalf("progress after one forecast = locations %d, forecasts %d; want 2 and 1", locations, forecasts)
+	}
+
+	model, _ = model.Update(ForecastDetailsLoadedMsg{SpotID: "second"})
+	if locations, forecasts := model.InitialFetchProgress(); locations != 2 || forecasts != 2 {
+		t.Fatalf("completed fetch progress = locations %d, forecasts %d; want 2 and 2", locations, forecasts)
+	}
+}
+
 func TestRRefreshesAllCachedForecastDataWithoutClearingFallback(t *testing.T) {
 	t.Parallel()
 

@@ -11,27 +11,32 @@ import (
 type Model struct {
 	Spinner spinner.Model
 
-	total          int
-	completed      int
-	terminalWidth  int
-	terminalHeight int
+	locations       int
+	locationsLoaded int
+	forecastsLoaded int
+	terminalWidth   int
+	terminalHeight  int
 }
 
-func New(total int) Model {
+func New(locations int) Model {
 	loader := spinner.New(
 		spinner.WithSpinner(spinner.MiniDot),
 		spinner.WithStyle(ui.SearchSpinnerStyle),
 	)
-	return Model{Spinner: loader, total: max(0, total)}
+	return Model{
+		Spinner:   loader,
+		locations: max(0, locations),
+	}
 }
 
 func (m Model) Init() tea.Cmd {
-	if m.total == 0 {
+	if m.locations == 0 {
 		return nil
 	}
 	return m.Spinner.Tick
 }
 
-func (m *Model) SetCompleted(completed int) {
-	m.completed = max(0, min(completed, m.total))
+func (m *Model) SetProgress(locationsLoaded, forecastsLoaded int) {
+	m.locationsLoaded = max(0, min(locationsLoaded, m.locations))
+	m.forecastsLoaded = max(0, min(forecastsLoaded, m.locations))
 }
