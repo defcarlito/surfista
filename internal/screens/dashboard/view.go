@@ -111,6 +111,9 @@ func (m Model) sortStatus(width int) string {
 	}
 	status := render(m.sortMode)
 	maxHeight := max(lipgloss.Height(render(SortTimeAdded)), lipgloss.Height(render(SortConditionHighToLow)))
+	if m.detailsOpen {
+		status = ""
+	}
 	return fitHeight(status, maxHeight)
 }
 

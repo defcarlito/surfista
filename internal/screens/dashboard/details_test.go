@@ -65,6 +65,7 @@ func TestEnterOpensCurrentForecastDetailsAndEscapeCloses(t *testing.T) {
 	}
 	model, _ = model.Update(dashboardKey('j'))
 	dashboardFooterHeight := lipgloss.Height(model.dashboardFooter(model.contentWidth()))
+	dashboardSortHeight := lipgloss.Height(model.sortStatus(model.contentWidth()))
 
 	model, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if !model.ShowingDetails() || cmd != nil {
@@ -79,6 +80,13 @@ func TestEnterOpensCurrentForecastDetailsAndEscapeCloses(t *testing.T) {
 	}
 	if got := lipgloss.Height(detailsFooter); got != dashboardFooterHeight {
 		t.Fatalf("blank details footer height = %d, want preserved height %d", got, dashboardFooterHeight)
+	}
+	detailsSortStatus := model.sortStatus(model.contentWidth())
+	if strings.TrimSpace(ansi.Strip(detailsSortStatus)) != "" {
+		t.Fatalf("details view did not blank the dashboard sort status: %q", ansi.Strip(detailsSortStatus))
+	}
+	if got := lipgloss.Height(detailsSortStatus); got != dashboardSortHeight {
+		t.Fatalf("blank details sort height = %d, want preserved height %d", got, dashboardSortHeight)
 	}
 	renderedDialog := model.detailsDialog()
 	if !strings.Contains(renderedDialog, ui.DashboardCurrentHourStyle.Render("12p")) {
@@ -118,7 +126,7 @@ func TestEnterOpensCurrentForecastDetailsAndEscapeCloses(t *testing.T) {
 	if strings.Contains(plain, "current slot") || strings.Contains(plain, "CONDITION") {
 		t.Fatalf("detail header contains removed labels:\n%s", plain)
 	}
-	for _, hidden := range []string{"s sort", "x remove", "q quit"} {
+	for _, hidden := range []string{"sorting by:", "s sort", "x remove", "q quit"} {
 		if strings.Contains(plain, hidden) {
 			t.Fatalf("details view still shows main dashboard control %q:\n%s", hidden, plain)
 		}
@@ -134,7 +142,7 @@ func TestEnterOpensCurrentForecastDetailsAndEscapeCloses(t *testing.T) {
 		t.Fatalf("escape did not close details while preserving selection: open=%v selection=%d", model.ShowingDetails(), model.selectedIndex)
 	}
 	closed := ansi.Strip(model.View())
-	for _, restored := range []string{"s sort", "x remove", "q quit"} {
+	for _, restored := range []string{"sorting by:", "s sort", "x remove", "q quit"} {
 		if !strings.Contains(closed, restored) {
 			t.Fatalf("closing details did not restore main dashboard control %q:\n%s", restored, closed)
 		}
@@ -417,72 +425,62 @@ func TestDetailsDialogKeepsPanelsInOneRowAtNarrowWidth(t *testing.T) {
 	t.Fatalf("compact detail panels are not in one row:\n%s", plain)
 }
 
-func TestDetailsShowDateEndpointsOnlyWhenDashboardDatesAreCovered(t *testing.T) {
+func TestDetailsOverlayKeepsForecastHeaderVisibleAtCompactHeight(t *testing.T) {
 	t.Parallel()
 
-	now := time.Date(2026, time.July, 23, 2, 0, 0, 0, time.UTC)
+	now := time.Date(2026, time.July, 23, 12, 0, 0, 0, time.UTC)
 	spot := surf.Spot{ID: "sunzal", Name: "Sunzal"}
 	forecast := surf.Forecast{
-		SpotID:    spot.ID,
-		UTCOffset: -6 * time.Hour,
-		Slots: []surf.ForecastSlot{
-			{Timestamp: time.Date(2026, time.July, 22, 6, 0, 0, 0, time.UTC), Rating: "Fair"},
-			{Timestamp: time.Date(2026, time.July, 22, 7, 0, 0, 0, time.UTC), Rating: "Fair"},
-			{Timestamp: time.Date(2026, time.July, 23, 6, 0, 0, 0, time.UTC), Rating: "Fair"},
-		},
+		SpotID: spot.ID,
+	}
+	for hour := 0; hour <= 24; hour++ {
+		forecast.Slots = append(forecast.Slots, surf.ForecastSlot{
+			Timestamp: time.Date(2026, time.July, 23, hour, 0, 0, 0, time.UTC),
+			Rating:    "Fair",
+		})
 	}
 	model := New(nil, nil, []surf.Spot{spot}, nil)
 	model.now = func() time.Time { return now }
 	model.forecasts[spot.ID] = forecastState{forecast: forecast}
-	model.details[spot.ID] = forecastDetailsState{details: surf.ForecastDetails{SpotID: spot.ID}}
+	model.details[spot.ID] = forecastDetailsState{details: surf.ForecastDetails{
+		SpotID: spot.ID,
+		Sunlight: []surf.SunlightDay{{
+			Sunrise: time.Date(2026, time.July, 23, 6, 30, 0, 0, time.UTC),
+			Sunset:  time.Date(2026, time.July, 23, 20, 12, 0, 0, time.UTC),
+		}},
+	}}
 	model.detailsOpen = true
 	model.detailsSpot = spot
 	model, _ = model.Update(tea.WindowSizeMsg{Width: 77, Height: 23})
 
-	smallDialog := model.detailsDialog()
-	for _, date := range []string{"7/22", "7/23"} {
-		if !strings.Contains(smallDialog, ui.DashboardSubtitleStyle.Render(date)) {
-			t.Fatalf("small detail dialog does not show styled endpoint date %q:\n%s", date, ansi.Strip(smallDialog))
+	headerLines := strings.Split(ansi.Strip(model.forecastHeader(model.contentWidth())), "\n")
+	viewLines := strings.Split(ansi.Strip(model.View()), "\n")
+	if len(headerLines) != 3 || len(viewLines) < len(headerLines) {
+		t.Fatalf("compact header/view heights = %d/%d, want a three-line header:\n%s", len(headerLines), len(viewLines), ansi.Strip(model.View()))
+	}
+	for index, headerLine := range headerLines {
+		if strings.TrimSpace(viewLines[index]) != strings.TrimSpace(headerLine) {
+			t.Fatalf("compact details obscured forecast header line %d:\nheader: %q\nview:   %q\n%s", index, headerLine, viewLines[index], ansi.Strip(model.View()))
 		}
 	}
-	smallLines := strings.Split(ansi.Strip(smallDialog), "\n")
-	topDateLine := detailLineContaining(smallLines, "7/22")
-	bottomDateLine := detailLineContaining(smallLines, "7/23")
-	firstGridLine := detailGridLineIndex(smallLines, "┬")
-	lastGridLine := detailGridLineIndex(smallLines, "┴")
-	if topDateLine != 1 || firstGridLine < 0 || !strings.HasPrefix(smallLines[topDateLine], "│ 7/22") {
-		t.Fatalf("start date is not in the upper-left frame corner:\n%s", ansi.Strip(smallDialog))
-	}
-	if bottomDateLine != len(smallLines)-2 || lastGridLine < 0 || !strings.HasPrefix(smallLines[bottomDateLine], "│ 7/23") {
-		t.Fatalf("end date is not in the lower-left frame corner:\n%s", ansi.Strip(smallDialog))
-	}
-
-	model, _ = model.Update(tea.WindowSizeMsg{Width: 77, Height: 25})
-	largeDialog := model.detailsDialog()
-	for _, date := range []string{"7/22", "7/23"} {
-		if strings.Contains(ansi.Strip(largeDialog), date) {
-			t.Fatalf("detail dialog repeats visible dashboard date %q:\n%s", date, ansi.Strip(largeDialog))
+	annotation := viewLines[0]
+	for _, want := range []string{"7/23", "7/24", "↑6:30a", "↓8:12p"} {
+		if !strings.Contains(annotation, want) {
+			t.Fatalf("compact details header is missing %q:\n%s", want, ansi.Strip(model.View()))
 		}
 	}
-}
-
-func detailLineContaining(lines []string, value string) int {
-	for index, line := range lines {
-		if strings.Contains(line, value) {
-			return index
+	timeRow := viewLines[1]
+	for _, want := range []string{"12a", "3a", "6a", "9a", "12p", "3p", "6p", "9p"} {
+		if !strings.Contains(timeRow, want) {
+			t.Fatalf("compact details time row is missing %q:\n%s", want, ansi.Strip(model.View()))
 		}
 	}
-	return -1
-}
-
-func detailGridLineIndex(lines []string, divider string) int {
-	index := -1
-	for lineIndex, line := range lines {
-		if strings.Count(line, divider) == detailsColumnCount-1 {
-			index = lineIndex
-		}
+	if !strings.Contains(viewLines[2], "now") {
+		t.Fatalf("compact details obscured the now row:\n%s", ansi.Strip(model.View()))
 	}
-	return index
+	if got := model.detailsVisibleRowCount(len(model.detailsForecastRows())); got != 1 {
+		t.Fatalf("compact details rows = %d, want 1 so the forecast header remains visible", got)
+	}
 }
 
 func TestDetailValuesRoundToTenthsAndDescriptionsWrap(t *testing.T) {

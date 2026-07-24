@@ -44,12 +44,14 @@ func (m Model) detailsOverlay(dashboard string) string {
 		return lipgloss.JoinVertical(lipgloss.Center, dashboard, "", dialog)
 	}
 
+	headerHeight := m.detailsHeaderHeight()
+	availableHeight := max(0, m.terminalHeight-headerHeight)
 	canvas := lipgloss.NewCanvas(m.terminalWidth, m.terminalHeight)
 	compositor := lipgloss.NewCompositor(
 		lipgloss.NewLayer(dashboard).Z(0),
 		lipgloss.NewLayer(dialog).
 			X(max(0, (m.terminalWidth-lipgloss.Width(dialog))/2)).
-			Y(max(0, (m.terminalHeight-lipgloss.Height(dialog))/2)).
+			Y(headerHeight+max(0, (availableHeight-lipgloss.Height(dialog))/2)).
 			Z(1),
 	)
 	return canvas.Compose(compositor).Render()
@@ -74,24 +76,14 @@ func (m Model) detailsDialog() string {
 	)
 	header := m.detailCategoryHeader(contentWidth, cellWidth)
 
-	topArrow := ""
+	topIndicator := ""
 	if offset > 0 {
-		topArrow = "↑"
+		topIndicator = ui.DashboardScrollIndicatorStyle.Width(contentWidth).Render("↑")
 	}
-	bottomArrow := ""
+	bottomIndicator := ""
 	if end < len(rows) {
-		bottomArrow = "↓"
+		bottomIndicator = ui.DashboardScrollIndicatorStyle.Width(contentWidth).Render("↓")
 	}
-
-	topDate := ""
-	bottomDate := ""
-	if m.detailsCoverDashboardDates(len(rows)) {
-		startDate := m.dashboardForecastDate(m.forecastDayOffset)
-		topDate = formatDashboardDate(startDate)
-		bottomDate = formatDashboardDate(startDate.AddDate(0, 0, 1))
-	}
-	topIndicator := ui.DashboardScrollIndicatorStyle.Width(contentWidth).Render(topArrow)
-	bottomIndicator := ui.DashboardScrollIndicatorStyle.Width(contentWidth).Render(bottomArrow)
 
 	rowViews := make([]string, 0, visibleCount)
 	swellLayout := swellColumnsForRows(rows)
@@ -118,8 +110,7 @@ func (m Model) detailsDialog() string {
 		"",
 		status,
 	)
-	dialog := ui.DashboardDetailDialogStyle.Width(width).Render(content)
-	return detailDialogDateCorners(dialog, topDate, bottomDate)
+	return ui.DashboardDetailDialogStyle.Width(width).Render(content)
 }
 
 func (m Model) detailsStatus(width int) string {
@@ -228,36 +219,15 @@ func (m Model) detailsVisibleRowCount(total int) int {
 	if m.terminalHeight <= 0 {
 		return total
 	}
-	return max(1, min(total, (m.terminalHeight-detailsDialogFixedHeight)/detailsForecastRowHeight))
+	availableHeight := max(0, m.terminalHeight-m.detailsHeaderHeight())
+	return max(1, min(total, (availableHeight-detailsDialogFixedHeight)/detailsForecastRowHeight))
 }
 
-func (m Model) detailsCoverDashboardDates(total int) bool {
+func (m Model) detailsHeaderHeight() int {
 	if m.terminalHeight <= 0 {
-		return false
+		return 0
 	}
-	dialogHeight := detailsDialogFixedHeight + m.detailsVisibleRowCount(total)*detailsForecastRowHeight
-	return max(0, (m.terminalHeight-dialogHeight)/2) == 0
-}
-
-func detailDialogDateCorners(dialog, topDate, bottomDate string) string {
-	if topDate == "" || bottomDate == "" {
-		return dialog
-	}
-	width := lipgloss.Width(dialog)
-	height := lipgloss.Height(dialog)
-	return lipgloss.NewCanvas(width, height).
-		Compose(lipgloss.NewCompositor(
-			lipgloss.NewLayer(dialog).Z(0),
-			lipgloss.NewLayer(ui.DashboardSubtitleStyle.Render(topDate)).
-				X(2).
-				Y(1).
-				Z(1),
-			lipgloss.NewLayer(ui.DashboardSubtitleStyle.Render(bottomDate)).
-				X(2).
-				Y(max(1, height-2)).
-				Z(1),
-		)).
-		Render()
+	return lipgloss.Height(m.forecastHeader(m.contentWidth()))
 }
 
 func (m *Model) resetDetailsScroll() {
