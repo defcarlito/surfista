@@ -97,7 +97,7 @@ func TestForecastResultUpdatesOnlyTrackedSpot(t *testing.T) {
 	}
 }
 
-func TestCachedForecastsOpenDashboardWhileRefreshingInBackground(t *testing.T) {
+func TestCachedForecastsStillCountPendingInitialRefreshes(t *testing.T) {
 	t.Parallel()
 
 	updatedAt := time.Date(2026, time.July, 22, 12, 0, 0, 0, time.UTC)
@@ -113,8 +113,8 @@ func TestCachedForecastsOpenDashboardWhileRefreshingInBackground(t *testing.T) {
 	provider := &fakeForecastProvider{}
 	model := New(provider, cache, []surf.Spot{{ID: "honolua", Name: "Honolua Bay"}}, nil)
 
-	if pending := model.PendingForecasts(); pending != 0 {
-		t.Fatalf("pending forecasts = %d, want 0 with a complete cache", pending)
+	if pending := model.PendingInitialFetches(); pending != 2 {
+		t.Fatalf("pending initial fetches = %d, want 2 despite a complete cache", pending)
 	}
 	if got := model.forecasts["honolua"]; got.updatedAt != updatedAt || got.forecast.Slots[0].Rating != "Fair" || !got.loading {
 		t.Fatalf("hydrated forecast state = %+v", got)

@@ -223,16 +223,18 @@ func (m *Model) refresh() tea.Cmd {
 	return tea.Batch(commands...)
 }
 
-// PendingForecasts reports how many favorite forecasts have not resolved yet.
-func (m Model) PendingForecasts() int {
+// PendingInitialFetches reports how many startup Surfline requests are still
+// in flight. Cached values remain usable fallback data, but do not count as a
+// completed refresh.
+func (m Model) PendingInitialFetches() int {
 	pending := 0
 	for _, state := range m.forecasts {
-		if state.loading && state.updatedAt.IsZero() {
+		if state.loading {
 			pending++
 		}
 	}
 	for _, state := range m.details {
-		if state.loading && state.updatedAt.IsZero() {
+		if state.loading {
 			pending++
 		}
 	}

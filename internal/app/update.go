@@ -24,7 +24,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case dashboard.ForecastLoadedMsg, dashboard.ForecastDetailsLoadedMsg:
 		m.dashboard, _ = m.dashboard.Update(msg)
 		if m.current == loadingScreen {
-			pending := m.dashboard.PendingForecasts()
+			pending := m.dashboard.PendingInitialFetches()
 			m.loading.SetCompleted(m.initialForecasts - pending)
 			if pending == 0 {
 				m.current = homeScreen

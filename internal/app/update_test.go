@@ -3,10 +3,12 @@ package app
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"surfista/internal/screens/dashboard"
 	"surfista/internal/surf"
@@ -113,7 +115,7 @@ func TestInitialLoadingWaitsForPrefetchedForecastDetails(t *testing.T) {
 	}
 }
 
-func TestCompleteForecastCacheStartsOnDashboardWhileRefreshing(t *testing.T) {
+func TestCompleteForecastCacheShowsInitialRefreshProgress(t *testing.T) {
 	t.Parallel()
 
 	updatedAt := time.Date(2026, time.July, 22, 12, 0, 0, 0, time.UTC)
@@ -135,11 +137,32 @@ func TestCompleteForecastCacheStartsOnDashboardWhileRefreshing(t *testing.T) {
 		[]surf.Spot{{ID: "honolua"}},
 		nil,
 	)
-	if model.current != homeScreen || model.initialForecasts != 0 {
-		t.Fatalf("cached initial state = screen %v loads %d, want home with background refresh", model.current, model.initialForecasts)
+	if model.current != loadingScreen || model.initialForecasts != 2 {
+		t.Fatalf("cached initial state = screen %v loads %d, want loading screen with 2 refreshes", model.current, model.initialForecasts)
+	}
+	if loadingView := ansi.Strip(model.loading.View()); !strings.Contains(loadingView, "Fetching favorite forecasts… 0/2") {
+		t.Fatalf("cached startup does not show initial fetch progress:\n%s", loadingView)
 	}
 	if model.Init() == nil {
-		t.Fatal("cached dashboard did not retain its background refresh commands")
+		t.Fatal("cached startup did not retain its refresh commands")
+	}
+
+	updatedModel, _ := model.Update(dashboard.ForecastLoadedMsg{SpotID: "honolua"})
+	updated := updatedModel.(Model)
+	if updated.current != loadingScreen {
+		t.Fatal("cached startup opened the dashboard before detail refresh completed")
+	}
+	if loadingView := ansi.Strip(updated.loading.View()); !strings.Contains(loadingView, "Fetching favorite forecasts… 1/2") {
+		t.Fatalf("cached startup did not advance fetch progress:\n%s", loadingView)
+	}
+
+	updatedModel, _ = updated.Update(dashboard.ForecastDetailsLoadedMsg{
+		SpotID: "honolua",
+		Err:    errors.New("details unavailable"),
+	})
+	updated = updatedModel.(Model)
+	if updated.current != homeScreen {
+		t.Fatal("cached startup did not open the dashboard after all refreshes resolved")
 	}
 }
 

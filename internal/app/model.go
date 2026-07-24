@@ -30,7 +30,7 @@ type Tracker interface {
 
 func New(searcher surf.SpotSearcher, tracker Tracker, forecaster surf.ForecastProvider, tracked []surf.Spot, loadErr error) Model {
 	dashboardModel := dashboard.New(forecaster, tracker, tracked, loadErr)
-	initialForecasts := dashboardModel.PendingForecasts()
+	initialForecasts := dashboardModel.PendingInitialFetches()
 	current := homeScreen
 	if initialForecasts > 0 {
 		current = loadingScreen
