@@ -417,6 +417,74 @@ func TestDetailsDialogKeepsPanelsInOneRowAtNarrowWidth(t *testing.T) {
 	t.Fatalf("compact detail panels are not in one row:\n%s", plain)
 }
 
+func TestDetailsShowDateEndpointsOnlyWhenDashboardDatesAreCovered(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.July, 23, 2, 0, 0, 0, time.UTC)
+	spot := surf.Spot{ID: "sunzal", Name: "Sunzal"}
+	forecast := surf.Forecast{
+		SpotID:    spot.ID,
+		UTCOffset: -6 * time.Hour,
+		Slots: []surf.ForecastSlot{
+			{Timestamp: time.Date(2026, time.July, 22, 6, 0, 0, 0, time.UTC), Rating: "Fair"},
+			{Timestamp: time.Date(2026, time.July, 22, 7, 0, 0, 0, time.UTC), Rating: "Fair"},
+			{Timestamp: time.Date(2026, time.July, 23, 6, 0, 0, 0, time.UTC), Rating: "Fair"},
+		},
+	}
+	model := New(nil, nil, []surf.Spot{spot}, nil)
+	model.now = func() time.Time { return now }
+	model.forecasts[spot.ID] = forecastState{forecast: forecast}
+	model.details[spot.ID] = forecastDetailsState{details: surf.ForecastDetails{SpotID: spot.ID}}
+	model.detailsOpen = true
+	model.detailsSpot = spot
+	model, _ = model.Update(tea.WindowSizeMsg{Width: 77, Height: 23})
+
+	smallDialog := model.detailsDialog()
+	for _, date := range []string{"7/22", "7/23"} {
+		if !strings.Contains(smallDialog, ui.DashboardSubtitleStyle.Render(date)) {
+			t.Fatalf("small detail dialog does not show styled endpoint date %q:\n%s", date, ansi.Strip(smallDialog))
+		}
+	}
+	smallLines := strings.Split(ansi.Strip(smallDialog), "\n")
+	topDateLine := detailLineContaining(smallLines, "7/22")
+	bottomDateLine := detailLineContaining(smallLines, "7/23")
+	firstGridLine := detailGridLineIndex(smallLines, "┬")
+	lastGridLine := detailGridLineIndex(smallLines, "┴")
+	if topDateLine != 1 || firstGridLine < 0 || !strings.HasPrefix(smallLines[topDateLine], "│ 7/22") {
+		t.Fatalf("start date is not in the upper-left frame corner:\n%s", ansi.Strip(smallDialog))
+	}
+	if bottomDateLine != len(smallLines)-2 || lastGridLine < 0 || !strings.HasPrefix(smallLines[bottomDateLine], "│ 7/23") {
+		t.Fatalf("end date is not in the lower-left frame corner:\n%s", ansi.Strip(smallDialog))
+	}
+
+	model, _ = model.Update(tea.WindowSizeMsg{Width: 77, Height: 25})
+	largeDialog := model.detailsDialog()
+	for _, date := range []string{"7/22", "7/23"} {
+		if strings.Contains(ansi.Strip(largeDialog), date) {
+			t.Fatalf("detail dialog repeats visible dashboard date %q:\n%s", date, ansi.Strip(largeDialog))
+		}
+	}
+}
+
+func detailLineContaining(lines []string, value string) int {
+	for index, line := range lines {
+		if strings.Contains(line, value) {
+			return index
+		}
+	}
+	return -1
+}
+
+func detailGridLineIndex(lines []string, divider string) int {
+	index := -1
+	for lineIndex, line := range lines {
+		if strings.Count(line, divider) == detailsColumnCount-1 {
+			index = lineIndex
+		}
+	}
+	return index
+}
+
 func TestDetailValuesRoundToTenthsAndDescriptionsWrap(t *testing.T) {
 	t.Parallel()
 
