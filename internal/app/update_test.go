@@ -167,6 +167,77 @@ func TestCompleteForecastCacheShowsInitialRefreshProgress(t *testing.T) {
 	}
 }
 
+func TestStartupWaitExpiryOpensDashboardWhileRefreshContinues(t *testing.T) {
+	t.Parallel()
+
+	updatedAt := time.Date(2026, time.July, 24, 12, 0, 0, 0, time.UTC)
+	tracker := appTestCacheTracker{
+		entries: map[string]surf.ForecastCacheEntry{
+			"honolua": {
+				SpotID:            "honolua",
+				Forecast:          surf.Forecast{SpotID: "honolua", Slots: []surf.ForecastSlot{{Timestamp: updatedAt, Rating: "Fair"}}},
+				ForecastUpdatedAt: updatedAt,
+				Details:           surf.ForecastDetails{SpotID: "honolua"},
+				DetailsUpdatedAt:  updatedAt,
+			},
+		},
+	}
+	model := New(
+		resizeTestSearcher{},
+		tracker,
+		&appTestFullForecastProvider{},
+		[]surf.Spot{{ID: "honolua", Name: "Honolua Bay"}},
+		nil,
+	)
+
+	updatedModel, cmd := model.Update(startupWaitExpiredMsg{})
+	updated := updatedModel.(Model)
+	if cmd != nil || updated.current != homeScreen {
+		t.Fatal("startup wait expiry did not open the cached dashboard")
+	}
+	if pending := updated.dashboard.PendingInitialFetches(); pending != 2 {
+		t.Fatalf("background refreshes after startup expiry = %d, want 2", pending)
+	}
+
+	updatedModel, _ = updated.Update(dashboard.ForecastLoadedMsg{
+		SpotID: "honolua",
+		Err:    errors.New("base forecast still unavailable"),
+	})
+	updated = updatedModel.(Model)
+	if updated.current != homeScreen || updated.dashboard.PendingInitialFetches() != 1 {
+		t.Fatal("base forecast result did not continue updating after the dashboard opened")
+	}
+
+	updatedModel, _ = updated.Update(dashboard.ForecastDetailsLoadedMsg{
+		SpotID: "honolua",
+		Err:    errors.New("details still unavailable"),
+	})
+	updated = updatedModel.(Model)
+	if updated.current != homeScreen || updated.dashboard.PendingInitialFetches() != 0 {
+		t.Fatal("detail result did not finish in the background")
+	}
+}
+
+func TestStartupWaitCommandOnlyRunsDuringLoading(t *testing.T) {
+	t.Parallel()
+
+	loadingModel := New(
+		resizeTestSearcher{},
+		resizeTestTracker{},
+		&appTestForecastProvider{},
+		[]surf.Spot{{ID: "honolua"}},
+		nil,
+	)
+	if loadingModel.startupWaitCmd() == nil {
+		t.Fatal("loading startup has no wait-limit command")
+	}
+
+	homeModel := New(resizeTestSearcher{}, resizeTestTracker{}, &appTestForecastProvider{}, nil, nil)
+	if homeModel.startupWaitCmd() != nil {
+		t.Fatal("empty dashboard unexpectedly starts a wait-limit command")
+	}
+}
+
 func TestNoInitialForecastsStartsOnDashboard(t *testing.T) {
 	t.Parallel()
 

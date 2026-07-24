@@ -94,6 +94,7 @@ func (s *TrackedStore) Remove(spotID string) (bool, error) {
 	if err := s.save(kept); err != nil {
 		return false, err
 	}
+	_ = s.PruneForecastCache(kept)
 	return true, nil
 }
 

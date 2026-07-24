@@ -525,7 +525,7 @@ func (m Model) spotCard(spot surf.Spot, slotWidth int, selected bool) string {
 
 func (m Model) spotNameLine(name string, width int, state forecastState) string {
 	styledName := ui.DashboardSpotStyle.Render(ansi.Truncate(name, width, ""))
-	if state.err == nil || state.updatedAt.IsZero() {
+	if state.updatedAt.IsZero() || (!state.loading && state.err == nil) {
 		return lipgloss.NewStyle().Width(width).MaxWidth(width).Align(lipgloss.Center).Render(styledName)
 	}
 

@@ -57,3 +57,43 @@ func TestForecastCacheRejectsMissingSpotID(t *testing.T) {
 		t.Fatal("SaveForecastCache accepted an empty spot ID")
 	}
 }
+
+func TestPruneForecastCacheRemovesLocationsThatAreNotFavorites(t *testing.T) {
+	t.Parallel()
+
+	store := NewTrackedStore(filepath.Join(t.TempDir(), "tracked.json"))
+	for _, spotID := range []string{"first", "second", "stale"} {
+		if err := store.SaveForecastCache(surf.ForecastCacheEntry{
+			SpotID:            spotID,
+			Forecast:          surf.Forecast{SpotID: spotID},
+			ForecastUpdatedAt: time.Now(),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	favorites := []surf.Spot{{ID: "first"}, {ID: "second"}}
+	if err := store.PruneForecastCache(favorites); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.PruneForecastCache(favorites); err != nil {
+		t.Fatalf("idempotent prune failed: %v", err)
+	}
+
+	loaded, err := store.LoadForecastCache()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded) != 2 {
+		t.Fatalf("cached locations after prune = %d, want 2", len(loaded))
+	}
+	if _, exists := loaded["stale"]; exists {
+		t.Fatal("stale location remained in forecast cache")
+	}
+	if _, exists := loaded["first"]; !exists {
+		t.Fatal("favorite location was removed from forecast cache")
+	}
+	if _, exists := loaded["second"]; !exists {
+		t.Fatal("favorite location was removed from forecast cache")
+	}
+}

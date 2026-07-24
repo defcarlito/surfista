@@ -21,6 +21,9 @@ func main() {
 	}
 
 	tracked, loadErr := store.Load()
+	if loadErr == nil {
+		_ = store.PruneForecastCache(tracked)
+	}
 	searcher, err := surf.NewSitemapSearcher(
 		os.Getenv("SURFISTA_SPOT_SITEMAP_URL"),
 		&http.Client{Timeout: 20 * time.Second},

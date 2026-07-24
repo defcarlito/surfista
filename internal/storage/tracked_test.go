@@ -74,6 +74,12 @@ func TestTrackedStoreRemovePersistsRemainingSpots(t *testing.T) {
 	if _, err := store.Add(second); err != nil {
 		t.Fatal(err)
 	}
+	if err := store.SaveForecastCache(surf.ForecastCacheEntry{SpotID: first.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveForecastCache(surf.ForecastCacheEntry{SpotID: second.ID}); err != nil {
+		t.Fatal(err)
+	}
 
 	removed, err := store.Remove(first.ID)
 	if err != nil {
@@ -88,6 +94,19 @@ func TestTrackedStoreRemovePersistsRemainingSpots(t *testing.T) {
 	}
 	if len(loaded) != 1 || loaded[0] != second {
 		t.Fatalf("Load() after Remove() = %+v, want only second spot", loaded)
+	}
+	cached, err := store.LoadForecastCache()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cached) != 1 {
+		t.Fatalf("cached locations after Remove() = %d, want 1", len(cached))
+	}
+	if _, exists := cached[first.ID]; exists {
+		t.Fatal("removed favorite remained in forecast cache")
+	}
+	if _, exists := cached[second.ID]; !exists {
+		t.Fatal("remaining favorite was removed from forecast cache")
 	}
 
 	removed, err = store.Remove("not-tracked")

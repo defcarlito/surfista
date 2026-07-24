@@ -1,6 +1,8 @@
 package app
 
 import (
+	"time"
+
 	tea "charm.land/bubbletea/v2"
 
 	"surfista/internal/screens/dashboard"
@@ -8,7 +10,16 @@ import (
 )
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(m.dashboard.Init(), m.loading.Init())
+	return tea.Batch(m.dashboard.Init(), m.loading.Init(), m.startupWaitCmd())
+}
+
+func (m Model) startupWaitCmd() tea.Cmd {
+	if m.current != loadingScreen {
+		return nil
+	}
+	return tea.Tick(startupWaitLimit, func(time.Time) tea.Msg {
+		return startupWaitExpiredMsg{}
+	})
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -18,6 +29,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.dashboard, dashboardCmd = m.dashboard.Update(msg)
 		m.loading, loadingCmd = m.loading.Update(msg)
 		return m, tea.Batch(searchCmd, dashboardCmd, loadingCmd)
+	}
+
+	if _, ok := msg.(startupWaitExpiredMsg); ok {
+		if m.current == loadingScreen {
+			m.current = homeScreen
+		}
+		return m, nil
 	}
 
 	switch msg.(type) {

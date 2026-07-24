@@ -53,7 +53,38 @@ func (s *TrackedStore) SaveForecastCache(entry surf.ForecastCacheEntry) error {
 		return err
 	}
 	locations[spotID] = entry
+	return s.saveForecastCache(locations)
+}
 
+// PruneForecastCache removes entries for locations that are no longer
+// favorites. Reconciliation is idempotent and leaves a missing cache missing.
+func (s *TrackedStore) PruneForecastCache(spots []surf.Spot) error {
+	locations, err := s.LoadForecastCache()
+	if err != nil {
+		return err
+	}
+
+	favorites := make(map[string]struct{}, len(spots))
+	for _, spot := range spots {
+		if spotID := strings.TrimSpace(spot.ID); spotID != "" {
+			favorites[spotID] = struct{}{}
+		}
+	}
+
+	changed := false
+	for spotID := range locations {
+		if _, favorite := favorites[spotID]; !favorite {
+			delete(locations, spotID)
+			changed = true
+		}
+	}
+	if !changed {
+		return nil
+	}
+	return s.saveForecastCache(locations)
+}
+
+func (s *TrackedStore) saveForecastCache(locations map[string]surf.ForecastCacheEntry) error {
 	path := s.forecastCachePath()
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("create forecast cache directory: %w", err)

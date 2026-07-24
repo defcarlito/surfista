@@ -1,11 +1,17 @@
 package app
 
 import (
+	"time"
+
 	"surfista/internal/screens/dashboard"
 	"surfista/internal/screens/loading"
 	"surfista/internal/screens/search"
 	"surfista/internal/surf"
 )
+
+const startupWaitLimit = 4 * time.Second
+
+type startupWaitExpiredMsg struct{}
 
 type screen int
 

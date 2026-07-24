@@ -282,6 +282,30 @@ func TestFailedRefreshKeepsCachedForecastAndShowsLastUpdated(t *testing.T) {
 	}
 }
 
+func TestBackgroundRefreshIdentifiesCachedForecastAge(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.July, 24, 12, 0, 0, 0, time.UTC)
+	updatedAt := now.Add(-2 * time.Hour)
+	cache := &fakeForecastCache{entries: map[string]surf.ForecastCacheEntry{
+		"honolua": {
+			SpotID: "honolua",
+			Forecast: surf.Forecast{SpotID: "honolua", Slots: []surf.ForecastSlot{{
+				Timestamp: time.Date(2026, time.July, 24, 12, 0, 0, 0, time.UTC),
+				Rating:    "Fair",
+			}}},
+			ForecastUpdatedAt: updatedAt,
+		},
+	}}
+	model := New(&fakeForecastProvider{}, cache, []surf.Spot{{ID: "honolua", Name: "Honolua Bay"}}, nil)
+	model.now = func() time.Time { return now }
+
+	plain := ansi.Strip(model.spotCard(model.spots[0], 10, false))
+	if !strings.Contains(plain, "Fair") || !strings.Contains(plain, "Last updated 2h ago") {
+		t.Fatalf("background refresh does not identify cached data and its age:\n%s", plain)
+	}
+}
+
 func TestSuccessfulRefreshReplacesAndPersistsCache(t *testing.T) {
 	t.Parallel()
 
