@@ -1,3 +1,7 @@
 # Surfista
 
-A terminal app for tracking Surfline spots.
+A minimalist terminal user interface (TUI) for finding, tracking, and comparing surf spots. Explore ten days of Surfline forecasts, including surf height, ratings, swell, wind, tides, temperature, and daylight, without leaving your terminal.
+
+Surfista was built to compare your favorite surf breaks at a glance. Sort spots by current or future conditions, move through the ten-day outlook, and open detailed forecasts when you want a closer look.
+
+*For surfers and terminal enthusiasts who want forecasts in a fast, keyboard-driven interface without leaving their workflow.*
