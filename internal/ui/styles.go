@@ -35,6 +35,8 @@ var (
 		Depth:   lipgloss.Color("#011936"),
 	}
 
+	AppBackgroundColor = lipgloss.Color("#1E1E1E")
+
 	primaryColor = OceanPalette.Foam
 	mutedColor   = lipgloss.Color("#7189A8")
 	borderColor  = OceanPalette.Current

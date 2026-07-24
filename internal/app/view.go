@@ -2,6 +2,8 @@ package app
 
 import (
 	tea "charm.land/bubbletea/v2"
+
+	"surfista/internal/ui"
 )
 
 func (m Model) View() tea.View {
@@ -15,6 +17,8 @@ func (m Model) View() tea.View {
 
 	view := tea.NewView(content)
 	view.AltScreen = true
+	view.BackgroundColor = ui.AppBackgroundColor
+	view.ForegroundColor = ui.OceanPalette.White
 	view.WindowTitle = "Surfista"
 	return view
 }
