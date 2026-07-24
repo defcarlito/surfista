@@ -13,7 +13,14 @@ import (
 	"surfista/internal/surf"
 )
 
+var version = "dev"
+
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == "--version" {
+		fmt.Println("surfista", version)
+		return
+	}
+
 	store, err := storage.NewDefaultTrackedStore()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Error finding the local data directory:", err)
