@@ -13,7 +13,7 @@ import (
 func TestViewShowsGradientBannerAndFetchProgress(t *testing.T) {
 	t.Parallel()
 
-	model := New(1)
+	model := New(1, true)
 	model.SetProgress(1, 0)
 	model, _ = model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	rendered := model.View()
@@ -27,6 +27,10 @@ func TestViewShowsGradientBannerAndFetchProgress(t *testing.T) {
 	if !strings.Contains(plain, "Fetching forecasts 0/1") {
 		t.Fatalf("view does not contain forecast progress:\n%s", plain)
 	}
+	lines := strings.Split(plain, "\n")
+	if got := strings.TrimSpace(lines[len(lines)-1]); got != "enter skip load and use cache" {
+		t.Fatalf("bottom help = %q, want skip-cache control:\n%s", got, plain)
+	}
 	if !strings.Contains(rendered, "\x1b[") {
 		t.Fatal("loading banner was rendered without gradient styling")
 	}
@@ -35,7 +39,7 @@ func TestViewShowsGradientBannerAndFetchProgress(t *testing.T) {
 func TestViewSwitchesFromLocationsToForecasts(t *testing.T) {
 	t.Parallel()
 
-	model := New(5)
+	model := New(5, false)
 	model.SetProgress(3, 2)
 	locationsView := ansi.Strip(model.View())
 	if !strings.Contains(locationsView, "Locations loaded 3/5") {
@@ -43,6 +47,9 @@ func TestViewSwitchesFromLocationsToForecasts(t *testing.T) {
 	}
 	if strings.Contains(locationsView, "Fetching forecasts") {
 		t.Fatalf("forecast phase appeared before locations finished:\n%s", locationsView)
+	}
+	if strings.Contains(locationsView, "skip load") {
+		t.Fatalf("skip control appeared without cached data:\n%s", locationsView)
 	}
 
 	model.SetProgress(5, 2)

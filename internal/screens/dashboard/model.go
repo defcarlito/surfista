@@ -147,6 +147,15 @@ func (m Model) HasSelection() bool {
 	return m.selectedIndex >= 0 && m.selectedIndex < len(m.spots)
 }
 
+func (m Model) HasUsableForecasts() bool {
+	for _, state := range m.forecasts {
+		if state.usable() {
+			return true
+		}
+	}
+	return false
+}
+
 func (m Model) removeCmd(spotID string) tea.Cmd {
 	return func() tea.Msg {
 		if m.remover == nil {

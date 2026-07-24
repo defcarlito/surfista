@@ -167,6 +167,61 @@ func TestCompleteForecastCacheShowsInitialRefreshProgress(t *testing.T) {
 	}
 }
 
+func TestEnterSkipsStartupWhenCacheIsAvailable(t *testing.T) {
+	t.Parallel()
+
+	updatedAt := time.Date(2026, time.July, 24, 12, 0, 0, 0, time.UTC)
+	tracker := appTestCacheTracker{
+		entries: map[string]surf.ForecastCacheEntry{
+			"honolua": {
+				SpotID:            "honolua",
+				Forecast:          surf.Forecast{SpotID: "honolua", Slots: []surf.ForecastSlot{{Timestamp: updatedAt, Rating: "Fair"}}},
+				ForecastUpdatedAt: updatedAt,
+			},
+		},
+	}
+	model := New(
+		resizeTestSearcher{},
+		tracker,
+		&appTestFullForecastProvider{},
+		[]surf.Spot{{ID: "honolua", Name: "Honolua Bay"}},
+		nil,
+	)
+	if !model.loading.CanSkip() {
+		t.Fatal("cached startup did not enable the skip control")
+	}
+
+	updatedModel, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	updated := updatedModel.(Model)
+	if cmd != nil || updated.current != homeScreen {
+		t.Fatal("enter did not skip startup loading")
+	}
+	if pending := updated.dashboard.PendingInitialFetches(); pending != 2 {
+		t.Fatalf("background refreshes after manual skip = %d, want 2", pending)
+	}
+}
+
+func TestEnterDoesNotSkipStartupWithoutCache(t *testing.T) {
+	t.Parallel()
+
+	model := New(
+		resizeTestSearcher{},
+		resizeTestTracker{},
+		&appTestFullForecastProvider{},
+		[]surf.Spot{{ID: "honolua"}},
+		nil,
+	)
+	if model.loading.CanSkip() {
+		t.Fatal("uncached startup enabled the skip control")
+	}
+
+	updatedModel, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	updated := updatedModel.(Model)
+	if updated.current != loadingScreen {
+		t.Fatal("enter skipped startup without cached data")
+	}
+}
+
 func TestStartupWaitExpiryOpensDashboardWhileRefreshContinues(t *testing.T) {
 	t.Parallel()
 

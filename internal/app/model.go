@@ -45,7 +45,7 @@ func New(searcher surf.SpotSearcher, tracker Tracker, forecaster surf.ForecastPr
 		current:          current,
 		search:           search.New(searcher, tracker),
 		dashboard:        dashboardModel,
-		loading:          loading.New(len(tracked)),
+		loading:          loading.New(len(tracked), dashboardModel.HasUsableForecasts()),
 		initialForecasts: initialForecasts,
 	}
 }

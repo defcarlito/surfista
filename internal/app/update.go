@@ -41,6 +41,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg.(type) {
 	case dashboard.ForecastLoadedMsg, dashboard.ForecastDetailsLoadedMsg:
 		m.dashboard, _ = m.dashboard.Update(msg)
+		m.loading.SetCanSkip(m.dashboard.HasUsableForecasts())
 		if m.current == loadingScreen {
 			pending := m.dashboard.PendingInitialFetches()
 			locationsLoaded, forecastsLoaded := m.dashboard.InitialFetchProgress()
@@ -79,6 +80,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.current = homeScreen
 				}
 				return m, cmd
+			}
+		case loadingScreen:
+			if key.String() == "enter" && m.loading.CanSkip() {
+				m.current = homeScreen
+				return m, nil
 			}
 		}
 	}

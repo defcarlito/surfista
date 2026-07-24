@@ -94,6 +94,11 @@ var (
 				Foreground(mutedColor).
 				Align(lipgloss.Center)
 
+	LoadingHelpStyle = lipgloss.NewStyle().
+				Faint(true).
+				Foreground(mutedColor).
+				Align(lipgloss.Center)
+
 	SearchHelpStyle = lipgloss.NewStyle().
 			Faint(true).
 			Foreground(mutedColor)

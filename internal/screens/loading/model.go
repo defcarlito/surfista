@@ -14,11 +14,12 @@ type Model struct {
 	locations       int
 	locationsLoaded int
 	forecastsLoaded int
+	canSkip         bool
 	terminalWidth   int
 	terminalHeight  int
 }
 
-func New(locations int) Model {
+func New(locations int, canSkip bool) Model {
 	loader := spinner.New(
 		spinner.WithSpinner(spinner.MiniDot),
 		spinner.WithStyle(ui.SearchSpinnerStyle),
@@ -26,6 +27,7 @@ func New(locations int) Model {
 	return Model{
 		Spinner:   loader,
 		locations: max(0, locations),
+		canSkip:   canSkip,
 	}
 }
 
@@ -39,4 +41,12 @@ func (m Model) Init() tea.Cmd {
 func (m *Model) SetProgress(locationsLoaded, forecastsLoaded int) {
 	m.locationsLoaded = max(0, min(locationsLoaded, m.locations))
 	m.forecastsLoaded = max(0, min(forecastsLoaded, m.locations))
+}
+
+func (m Model) CanSkip() bool {
+	return m.canSkip
+}
+
+func (m *Model) SetCanSkip(canSkip bool) {
+	m.canSkip = canSkip
 }

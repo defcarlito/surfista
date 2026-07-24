@@ -25,13 +25,26 @@ func (m Model) View() string {
 	)
 
 	if m.terminalWidth <= 0 || m.terminalHeight <= 0 {
+		if m.canSkip {
+			help := ui.LoadingHelpStyle.Width(contentWidth).Render("enter skip load and use cache")
+			return lipgloss.JoinVertical(lipgloss.Center, content, "", help)
+		}
 		return content
 	}
-	return lipgloss.Place(
+	bodyHeight := m.terminalHeight
+	if m.canSkip {
+		bodyHeight--
+	}
+	body := lipgloss.Place(
 		m.terminalWidth,
-		m.terminalHeight,
+		max(0, bodyHeight),
 		lipgloss.Center,
 		lipgloss.Center,
 		content,
 	)
+	if !m.canSkip {
+		return body
+	}
+	help := ui.LoadingHelpStyle.Width(m.terminalWidth).Render("enter skip load and use cache")
+	return lipgloss.JoinVertical(lipgloss.Left, body, help)
 }
