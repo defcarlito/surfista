@@ -471,10 +471,72 @@ func TestDetailsDialogKeepsPanelsInOneRowAtNarrowWidth(t *testing.T) {
 			lastIndex = index
 		}
 		if lastIndex >= 0 {
+			if strings.Contains(line, "Surf heigh") || strings.Contains(line, "Temperatur") {
+				t.Fatalf("narrow detail header contains truncated full labels: %q", line)
+			}
 			return
 		}
 	}
 	t.Fatalf("compact detail panels are not in one row:\n%s", plain)
+}
+
+func TestDetailCategoryTitlesUseFullLabelsWhenTheyFit(t *testing.T) {
+	t.Parallel()
+
+	got := detailCategoryTitles(12)
+	want := []string{"Surf height", "Swell", "Wind", "Tide", "Temperature"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("wide detail titles = %v, want %v", got, want)
+	}
+}
+
+func TestNarrowSurfCellUsesCompleteCompactDescriptions(t *testing.T) {
+	t.Parallel()
+
+	lines := surfHeightRowLines(surf.ForecastSlot{
+		Rating: "Fair to Good",
+		SurfHeight: surf.SurfHeight{
+			Min:           6,
+			Max:           8,
+			HumanRelation: "Overhead to well overhead",
+		},
+	}, 10)
+	got := make([]string, len(lines))
+	for index, line := range lines {
+		got[index] = strings.TrimSpace(ansi.Strip(line))
+		if width := ansi.StringWidth(got[index]); width > 10 {
+			t.Fatalf("compact surf line %q has width %d, want at most 10", got[index], width)
+		}
+	}
+	want := []string{"6–8′", "F–G", "OH to well", "OH"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("compact surf descriptions = %v, want %v", got, want)
+	}
+}
+
+func TestNarrowTideCellUsesCompleteCompactDescriptions(t *testing.T) {
+	t.Parallel()
+
+	details := surf.ForecastDetails{
+		Units: surf.ForecastUnits{TideHeight: "FT"},
+		Tides: []surf.TidePoint{
+			{Timestamp: time.Date(2026, time.July, 24, 9, 0, 0, 0, time.UTC), Type: "LOW", Height: 1},
+			{Timestamp: time.Date(2026, time.July, 24, 12, 0, 0, 0, time.UTC), Type: "NORMAL", Height: 2.5},
+			{Timestamp: time.Date(2026, time.July, 24, 15, 0, 0, 0, time.UTC), Type: "HIGH", Height: 5},
+		},
+	}
+	lines := tideDetailLines(details, time.Date(2026, time.July, 24, 12, 0, 0, 0, time.UTC), false, 10)
+	got := make([]string, len(lines))
+	for index, line := range lines {
+		got[index] = strings.TrimSpace(ansi.Strip(line))
+		if width := ansi.StringWidth(got[index]); width > 10 {
+			t.Fatalf("compact tide line %q has width %d, want at most 10", got[index], width)
+		}
+	}
+	want := []string{"2.5′ rise", "l 9:00a", "h 3:00p"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("compact tide descriptions = %v, want %v", got, want)
+	}
 }
 
 func TestDetailsOverlayKeepsForecastHeaderVisibleAtCompactHeight(t *testing.T) {

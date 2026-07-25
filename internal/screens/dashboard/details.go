@@ -175,7 +175,7 @@ func (m Model) detailsFreshness() string {
 }
 
 func (m Model) detailCategoryHeader(contentWidth, cellWidth int) string {
-	titles := [...]string{"Surf height", "Swell", "Wind", "Tide", "Temperature"}
+	titles := detailCategoryTitles(cellWidth)
 	cells := make([]string, 0, len(titles))
 	for _, title := range titles {
 		cells = append(cells, lipgloss.NewStyle().Width(cellWidth).Align(lipgloss.Center).Render(
@@ -186,6 +186,16 @@ func (m Model) detailCategoryHeader(contentWidth, cellWidth int) string {
 	return lipgloss.NewStyle().Width(contentWidth).Align(lipgloss.Center).Render(header)
 }
 
+func detailCategoryTitles(cellWidth int) []string {
+	full := []string{"Surf height", "Swell", "Wind", "Tide", "Temperature"}
+	for _, title := range full {
+		if ansi.StringWidth(title) >= cellWidth {
+			return []string{"Surf", "Swell", "Wind", "Tide", "Temp"}
+		}
+	}
+	return full
+}
+
 func (m Model) detailForecastRow(row forecastDetailRow, contentWidth, cellWidth int, swellLayout swellColumnLayout) string {
 	detailsState := m.details[m.detailsSpot.ID]
 	detailsLoading := detailsState.loading && !detailsState.usable()
@@ -193,7 +203,7 @@ func (m Model) detailForecastRow(row forecastDetailRow, contentWidth, cellWidth 
 		surfHeightRowLines(row.forecast, cellWidth),
 		swellRowLines(row.forecast, cellWidth, swellLayout),
 		windDetailLines(row.details, row.hasDetail, detailsLoading, detailsState.details.Units),
-		tideDetailLines(detailsState.details, row.forecast.Timestamp, detailsLoading),
+		tideDetailLines(detailsState.details, row.forecast.Timestamp, detailsLoading, cellWidth),
 		temperatureDetailLines(row.details, row.hasDetail, detailsLoading, detailsState.details.Units),
 	}
 
@@ -361,15 +371,36 @@ func repeatString(value string, count int) []string {
 }
 
 func surfHeightRowLines(slot surf.ForecastSlot, width int) []string {
+	rating := uppercaseFirst(strings.ToLower(slot.Rating))
+	if ansi.StringWidth(rating) >= width {
+		rating = compactRating(slot.Rating, width)
+	}
 	lines := []string{
 		ui.DashboardDetailValueStyle.Render(formatDetailHeight(slot.SurfHeight)),
-		ui.DashboardRating(uppercaseFirst(strings.ToLower(slot.Rating)), slot.Rating),
+		ui.DashboardRating(rating, slot.Rating),
 	}
 	if relation := strings.TrimSpace(slot.SurfHeight.HumanRelation); relation != "" {
 		relation = uppercaseFirst(strings.ToLower(relation))
-		lines = append(lines, wrapDetailText(relation, width)...)
+		available := detailsCellContentHeight - len(lines)
+		lines = append(lines, compactSurfRelation(relation, width, available)...)
 	}
 	return lines[:min(len(lines), detailsCellContentHeight)]
+}
+
+func compactSurfRelation(relation string, width, maxLines int) []string {
+	lines := wrapDetailText(relation, width)
+	if len(lines) <= maxLines {
+		return lines
+	}
+
+	words := strings.Fields(relation)
+	for index, word := range words {
+		if strings.EqualFold(word, "overhead") {
+			words[index] = "OH"
+		}
+	}
+	lines = wrapDetailText(strings.Join(words, " "), width)
+	return lines[:min(len(lines), maxLines)]
 }
 
 func swellColumnsForRows(rows []forecastDetailRow) swellColumnLayout {
@@ -435,7 +466,7 @@ func windDetailLines(slot surf.ForecastDetailSlot, available, loading bool, unit
 	return lines
 }
 
-func tideDetailLines(details surf.ForecastDetails, at time.Time, loading bool) []string {
+func tideDetailLines(details surf.ForecastDetails, at time.Time, loading bool, width int) []string {
 	if loading {
 		return []string{ui.Muted("loading…")}
 	}
@@ -456,13 +487,19 @@ func tideDetailLines(details surf.ForecastDetails, at time.Time, loading bool) [
 	}
 	lines := make([]string, 0, 3)
 	if hasHeight {
-		lines = append(lines, ui.DashboardDetailValueStyle.Render(fmt.Sprintf("%s%s %s", formatDetailNumber(height), unit, phase)))
+		heightLabel := formatDetailNumber(height) + unit
+		current := heightLabel + " " + phase
+		if ansi.StringWidth(current) >= width {
+			compactPhase := map[string]string{"rising": "rise", "falling": "fall", "steady": "still"}[phase]
+			current = heightLabel + " " + compactPhase
+		}
+		lines = append(lines, ui.DashboardDetailValueStyle.Render(current))
 	}
 	if previous != nil {
-		lines = append(lines, formatTideEvent(*previous, details.UTCOffset, unit))
+		lines = append(lines, formatTideEvent(*previous, details.UTCOffset, unit, width))
 	}
 	if next != nil {
-		lines = append(lines, formatTideEvent(*next, details.UTCOffset, unit))
+		lines = append(lines, formatTideEvent(*next, details.UTCOffset, unit, width))
 	}
 	return lines
 }
@@ -504,7 +541,7 @@ func tidePosition(points []surf.TidePoint, at time.Time) (previousEvent, nextEve
 	}
 }
 
-func formatTideEvent(point surf.TidePoint, offset time.Duration, unit string) string {
+func formatTideEvent(point surf.TidePoint, offset time.Duration, unit string, width int) string {
 	local := point.Timestamp.UTC().Add(offset)
 	timeLabel := strings.TrimSuffix(local.Format("3:04pm"), "m")
 	eventLabel := strings.ToLower(point.Type)
@@ -514,7 +551,13 @@ func formatTideEvent(point surf.TidePoint, offset time.Duration, unit string) st
 	case "HIGH":
 		eventLabel = "h"
 	}
-	return fmt.Sprintf("%s %s %s%s", eventLabel, timeLabel, formatDetailNumber(point.Height), unit)
+	heightLabel := formatDetailNumber(point.Height) + unit
+	full := fmt.Sprintf("%s %s %s", eventLabel, timeLabel, heightLabel)
+	if ansi.StringWidth(full) < width {
+		return full
+	}
+
+	return eventLabel + " " + timeLabel
 }
 
 func temperatureDetailLines(slot surf.ForecastDetailSlot, available, loading bool, units surf.ForecastUnits) []string {
