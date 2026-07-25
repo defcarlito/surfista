@@ -18,6 +18,15 @@ brew install defcarlito/tap/surfista
 brew upgrade defcarlito/tap/surfista
 ```
 
+### Build from source
+
+```bash
+git clone https://github.com/defcarlito/surfista
+cd surfista
+go build
+./surfista
+```
+
 ## Usage
 
 Run Surfista:
