@@ -16,6 +16,7 @@ type forecastState struct {
 	forecast  surf.Forecast
 	updatedAt time.Time
 	loading   bool
+	fetched   bool
 	err       error
 }
 

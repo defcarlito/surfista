@@ -237,7 +237,7 @@ func TestRRefreshesAllCachedForecastDataWithoutClearingFallback(t *testing.T) {
 	}
 }
 
-func TestFailedRefreshKeepsCachedForecastAndShowsLastUpdated(t *testing.T) {
+func TestFailedRefreshKeepsCachedForecastAndShowsAge(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, time.July, 22, 12, 43, 0, 0, time.UTC)
@@ -266,19 +266,22 @@ func TestFailedRefreshKeepsCachedForecastAndShowsLastUpdated(t *testing.T) {
 	}
 	card := model.spotCard(model.spots[0], 10, false)
 	plain := ansi.Strip(card)
-	if !strings.Contains(plain, "Fair") || !strings.Contains(plain, "Last updated 1h ago") {
+	if !strings.Contains(plain, "Fair") || !strings.Contains(plain, "1h ago") {
 		t.Fatalf("cached fallback card is missing forecast or age:\n%s", plain)
+	}
+	if strings.Contains(plain, "Last updated") {
+		t.Fatalf("cached fallback card includes the removed last-updated prefix:\n%s", plain)
 	}
 	if strings.Contains(plain, "403") || strings.Contains(plain, "<html>") {
 		t.Fatalf("cached fallback card leaked the raw provider error:\n%s", plain)
 	}
-	styledAge := ui.DashboardSubtitleStyle.Render("Last updated 1h ago")
+	styledAge := ui.DashboardSubtitleStyle.Render("1h ago")
 	if !strings.Contains(card, styledAge) {
-		t.Fatal("last-updated label does not use the dashboard subtitle color")
+		t.Fatal("cached age does not use the dashboard subtitle color")
 	}
 	nameLine := ansi.Strip(model.spotNameLine("Honolua Bay", 80, state))
-	if !strings.HasSuffix(nameLine, "Last updated 1h ago ") {
-		t.Fatalf("last-updated label does not have right-border spacing: %q", nameLine)
+	if !strings.HasSuffix(nameLine, "1h ago ") {
+		t.Fatalf("cached age does not have right-border spacing: %q", nameLine)
 	}
 }
 
@@ -301,8 +304,11 @@ func TestBackgroundRefreshIdentifiesCachedForecastAge(t *testing.T) {
 	model.now = func() time.Time { return now }
 
 	plain := ansi.Strip(model.spotCard(model.spots[0], 10, false))
-	if !strings.Contains(plain, "Fair") || !strings.Contains(plain, "Last updated 2h ago") {
+	if !strings.Contains(plain, "Fair") || !strings.Contains(plain, "2h ago") {
 		t.Fatalf("background refresh does not identify cached data and its age:\n%s", plain)
+	}
+	if strings.Contains(plain, "Last updated") {
+		t.Fatalf("background refresh includes the removed last-updated prefix:\n%s", plain)
 	}
 }
 
@@ -326,9 +332,13 @@ func TestSuccessfulRefreshReplacesAndPersistsCache(t *testing.T) {
 		got.ForecastUpdatedAt != now || got.DetailsUpdatedAt != now {
 		t.Fatalf("persisted cache entry = %+v", got)
 	}
+	nameLine := ansi.Strip(model.spotNameLine("Honolua Bay", 80, model.forecasts["honolua"]))
+	if !strings.HasSuffix(nameLine, "now ") {
+		t.Fatalf("successful fetch freshness = %q, want now", nameLine)
+	}
 }
 
-func TestLastUpdatedAgeUsesMinutesHoursAndDays(t *testing.T) {
+func TestForecastAgeUsesMinutesHoursAndDays(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, time.July, 22, 12, 0, 0, 0, time.UTC)
@@ -336,16 +346,18 @@ func TestLastUpdatedAgeUsesMinutesHoursAndDays(t *testing.T) {
 		age  time.Duration
 		want string
 	}{
-		{age: time.Minute, want: "Last updated 1m ago"},
-		{age: 59 * time.Minute, want: "Last updated 59m ago"},
-		{age: time.Hour, want: "Last updated 1h ago"},
-		{age: 23 * time.Hour, want: "Last updated 23h ago"},
-		{age: 24 * time.Hour, want: "Last updated 1d ago"},
-		{age: 49 * time.Hour, want: "Last updated 2d ago"},
+		{age: 0, want: "1m ago"},
+		{age: 30 * time.Second, want: "1m ago"},
+		{age: time.Minute, want: "1m ago"},
+		{age: 59 * time.Minute, want: "59m ago"},
+		{age: time.Hour, want: "1h ago"},
+		{age: 23 * time.Hour, want: "23h ago"},
+		{age: 24 * time.Hour, want: "1d ago"},
+		{age: 49 * time.Hour, want: "2d ago"},
 	}
 	for _, test := range tests {
-		if got := formatLastUpdated(now, now.Add(-test.age)); got != test.want {
-			t.Errorf("formatLastUpdated(%v) = %q, want %q", test.age, got, test.want)
+		if got := formatForecastAge(now, now.Add(-test.age)); got != test.want {
+			t.Errorf("formatForecastAge(%v) = %q, want %q", test.age, got, test.want)
 		}
 	}
 }

@@ -23,6 +23,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		if msg.Err == nil {
 			state.forecast = msg.Forecast
 			state.updatedAt = m.now()
+			state.fetched = true
 		}
 		m.forecasts[msg.SpotID] = state
 		if msg.Err == nil {

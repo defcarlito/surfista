@@ -525,31 +525,35 @@ func (m Model) spotCard(spot surf.Spot, slotWidth int, selected bool) string {
 
 func (m Model) spotNameLine(name string, width int, state forecastState) string {
 	styledName := ui.DashboardSpotStyle.Render(ansi.Truncate(name, width, ""))
-	if state.updatedAt.IsZero() || (!state.loading && state.err == nil) {
+	if state.updatedAt.IsZero() {
 		return lipgloss.NewStyle().Width(width).MaxWidth(width).Align(lipgloss.Center).Render(styledName)
 	}
 
-	lastUpdated := ui.DashboardSubtitleStyle.Render(formatLastUpdated(m.now(), state.updatedAt))
+	freshness := formatForecastAge(m.now(), state.updatedAt)
+	if state.fetched && !state.loading && state.err == nil {
+		freshness = "now"
+	}
+	styledFreshness := ui.DashboardSubtitleStyle.Render(freshness)
 	canvas := lipgloss.NewCanvas(width, 1)
 	line := canvas.Compose(lipgloss.NewCompositor(
 		lipgloss.NewLayer(styledName).X(max(0, (width-lipgloss.Width(styledName))/2)),
-		lipgloss.NewLayer(lastUpdated).X(max(0, width-lipgloss.Width(lastUpdated)-1)),
+		lipgloss.NewLayer(styledFreshness).X(max(0, width-lipgloss.Width(styledFreshness)-1)),
 	)).Render()
 	return lipgloss.NewStyle().Width(width).MaxWidth(width).Render(line)
 }
 
-func formatLastUpdated(now, updatedAt time.Time) string {
+func formatForecastAge(now, updatedAt time.Time) string {
 	age := now.Sub(updatedAt)
 	if age < 0 {
 		age = 0
 	}
 	switch {
 	case age < time.Hour:
-		return fmt.Sprintf("Last updated %dm ago", int(age/time.Minute))
+		return fmt.Sprintf("%dm ago", max(1, int(age/time.Minute)))
 	case age < 24*time.Hour:
-		return fmt.Sprintf("Last updated %dh ago", int(age/time.Hour))
+		return fmt.Sprintf("%dh ago", int(age/time.Hour))
 	default:
-		return fmt.Sprintf("Last updated %dd ago", int(age/(24*time.Hour)))
+		return fmt.Sprintf("%dd ago", int(age/(24*time.Hour)))
 	}
 }
 
