@@ -34,21 +34,3 @@ Run Surfista:
 ```bash
 surfista
 ```
-
-**Controls**
-
-| Key | Action |
-|---|---|
-| `←` / `→` or `h` / `l` | Move between forecast days |
-| `↑` / `↓` or `k` / `j` | Navigate locations and forecast details |
-| `Enter` | Open the selected location’s detailed forecast |
-| `/` | Search for and track a surf spot |
-| `s` | Switch sorting modes |
-| `v` | Cycle through surf, wind, and swell views |
-| `r` | Refresh forecasts |
-| `u` | Open the selected spot on Surfline |
-| `x` | Remove the selected spot |
-| `Esc` | Clear the selection, close a view, or cancel |
-| `q` or `Ctrl+C` | Quit Surfista |
-
-When searching, type to find a spot, press `Enter` to select the results, use `↑` / `↓` or `k` / `j` to navigate, and press `Enter` again to track the selected spot.
