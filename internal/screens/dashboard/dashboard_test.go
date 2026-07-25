@@ -1121,7 +1121,7 @@ func TestLocationViewportScrollsWhileHeaderAndControlsStayPinned(t *testing.T) {
 	if strings.TrimSpace(lines[3]) != "" {
 		t.Fatalf("expected one blank row between the current-time label and sort status: %q", lines[3])
 	}
-	if !strings.Contains(lines[4], "sorting by: time added") || strings.Contains(lines[4], "s sort") {
+	if !strings.Contains(lines[4], "s sorting by: time added") {
 		t.Fatalf("sort status is not between the times and locations: %q", lines[4])
 	}
 	controlsLine := lineContaining(lines, "↑/↓/j/k")

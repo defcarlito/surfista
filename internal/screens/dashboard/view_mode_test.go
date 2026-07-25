@@ -24,8 +24,17 @@ func TestVCyclesDashboardViews(t *testing.T) {
 	if plain := ansi.Strip(status); !strings.Contains(plain, "viewing: surf") {
 		t.Fatalf("initial view status = %q, want surf label", plain)
 	}
+	if plain := ansi.Strip(status); !strings.Contains(plain, "s sorting by:") ||
+		!strings.Contains(plain, "v viewing:") {
+		t.Fatalf("dashboard status does not show inline key controls: %q", plain)
+	}
 	if !strings.Contains(status, ui.DashboardSortStyle.Render("viewing: surf")) {
 		t.Fatal("view status does not use the white sorting-status style")
+	}
+	for _, key := range []string{"s", "v"} {
+		if !strings.Contains(status, ui.DashboardHelpStyle.Render(key)) {
+			t.Fatalf("inline %s control does not use the bottom-control style", key)
+		}
 	}
 	statusLines := strings.Split(ansi.Strip(status), "\n")
 	if len(statusLines) != 2 || strings.Index(statusLines[0], "sorting by:") != strings.Index(statusLines[1], "viewing:") {

@@ -101,7 +101,8 @@ func (m Model) dashboardFooter(width int) string {
 
 func (m Model) sortStatus(width int) string {
 	render := func(mode SortMode) string {
-		label := ui.DashboardSortStyle.Render("sorting by: " + mode.label())
+		label := ui.DashboardHelpStyle.Render("s") + " " +
+			ui.DashboardSortStyle.Render("sorting by: "+mode.label())
 		if mode == SortConditionHighToLow {
 			context := "best right now"
 			if m.forecastDayOffset > 0 {
@@ -112,7 +113,8 @@ func (m Model) sortStatus(width int) string {
 		return label
 	}
 	sortLine := ansi.Truncate(render(m.sortMode), width, "")
-	viewLine := ui.DashboardSortStyle.Render("viewing: " + m.viewMode.label())
+	viewLine := ui.DashboardHelpStyle.Render("v") + " " +
+		ui.DashboardSortStyle.Render("viewing: "+m.viewMode.label())
 	if m.viewMode == dashboardViewWind {
 		viewLine += " " + ui.DashboardSubtitleStyle.Render("("+m.dashboardWindUnit()+")")
 	}
