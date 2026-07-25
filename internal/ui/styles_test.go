@@ -25,8 +25,8 @@ func TestGradientTextPreservesContent(t *testing.T) {
 func TestGradientTextPreservesMultilineBanner(t *testing.T) {
 	t.Parallel()
 
-	rendered := GradientText(SearchBanner)
-	if plain := ansi.Strip(rendered); plain != SearchBanner {
+	rendered := GradientText(LoadingBanner)
+	if plain := ansi.Strip(rendered); plain != LoadingBanner {
 		t.Fatal("gradient changed the ASCII banner content")
 	}
 }

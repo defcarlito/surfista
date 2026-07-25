@@ -25,24 +25,11 @@ func (m Model) View() string {
 		Align(lipgloss.Left).
 		Render(lipgloss.JoinVertical(lipgloss.Left, sections...))
 
-	bannerWidth := lipgloss.Width(ui.SearchBanner)
-	showBanner := m.terminalWidth <= 0 || bannerWidth <= m.terminalWidth-(wideHorizontalMargin*2)
-	layoutWidth := width
-	if showBanner {
-		layoutWidth = max(layoutWidth, bannerWidth)
-	}
-	controls = lipgloss.PlaceHorizontal(layoutWidth, lipgloss.Center, controls)
-
-	content := controls
-	if showBanner {
-		header := ui.SearchTitleStyle.Width(layoutWidth).Render(ui.GradientText(ui.SearchBanner))
-		content = lipgloss.JoinVertical(lipgloss.Left, header, "", controls)
-	}
 	column := lipgloss.NewStyle().
-		Width(layoutWidth).
+		Width(width).
 		Align(lipgloss.Left).
 		MarginTop(1).
-		Render(content)
+		Render(controls)
 
 	if m.terminalWidth <= 0 {
 		return column

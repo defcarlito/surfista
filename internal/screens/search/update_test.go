@@ -10,7 +10,6 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"surfista/internal/surf"
-	"surfista/internal/ui"
 )
 
 type fakeSearcher struct {
@@ -283,6 +282,17 @@ func TestWindowResizeUpdatesContentAndInputWidths(t *testing.T) {
 	if wide.Input.Width() != 56 {
 		t.Fatalf("wide input width = %d, want 56", wide.Input.Width())
 	}
+	wideLines := strings.Split(wide.View(), "\n")
+	inputBorderLine := -1
+	for index, line := range wideLines {
+		if strings.Contains(line, "┌") {
+			inputBorderLine = index
+			break
+		}
+	}
+	if inputBorderLine != 1 {
+		t.Fatalf("wide search input starts on line %d, want line 1 without a banner", inputBorderLine)
+	}
 	narrow, _ := wide.Update(tea.WindowSizeMsg{Width: 30, Height: 20})
 	if narrow.ContentWidth() != 26 {
 		t.Fatalf("narrow content width = %d, want 26", narrow.ContentWidth())
@@ -303,11 +313,6 @@ func TestWindowResizeUpdatesContentAndInputWidths(t *testing.T) {
 	}
 	if strings.Contains(narrow.View(), "surfista") {
 		t.Fatal("narrow view rendered the compact app title")
-	}
-	for _, bannerLine := range strings.Split(ui.SearchBanner, "\n") {
-		if line := strings.TrimSpace(bannerLine); line != "" && strings.Contains(narrow.View(), line) {
-			t.Fatalf("narrow view rendered search banner line %q", line)
-		}
 	}
 }
 

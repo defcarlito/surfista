@@ -15,11 +15,6 @@ const (
 		"  / ___/ / / / ___/ /_/ / ___/ __/ __ `/\n" +
 		" (__  ) /_/ / /  / __/ (__  ) /_/ /_/ / \n" +
 		"/____/\\__,_/_/  /_/ /_/____/\\__/\\__,_/  "
-	SearchBanner = "                              __                         _______          \n" +
-		"   ________  ____ ___________/ /_       _______  _______/ __/ (_)___  ___ \n" +
-		"  / ___/ _ \\/ __ `/ ___/ ___/ __ \\     / ___/ / / / ___/ /_/ / / __ \\/ _ \\\n" +
-		" (__  )  __/ /_/ / /  / /__/ / / /    (__  ) /_/ / /  / __/ / / / / /  __/\n" +
-		"/____/\\___/\\__,_/_/   \\___/_/ /_/    /____/\\__,_/_/  /_/ /_/_/_/ /_/\\___/"
 )
 
 var (
@@ -66,8 +61,6 @@ var (
 	ErrorStyle = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(errorColor)
-
-	SearchTitleStyle = TitleStyle.Align(lipgloss.Center)
 
 	SearchInputStyle = lipgloss.NewStyle().
 				Border(lipgloss.NormalBorder()).
