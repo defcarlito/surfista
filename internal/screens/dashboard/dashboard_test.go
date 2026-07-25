@@ -256,7 +256,7 @@ func TestRRefreshesAllCachedForecastDataWithoutClearingFallback(t *testing.T) {
 	for _, message := range refreshMessages {
 		model, _ = model.Update(message)
 	}
-	if model.hasActiveRefreshes() {
+	if model.hasActiveFetches() {
 		t.Fatal("completed refresh left pending spinner state")
 	}
 	for _, spot := range spots {
@@ -268,7 +268,7 @@ func TestRRefreshesAllCachedForecastDataWithoutClearingFallback(t *testing.T) {
 		if details.loading || details.err != nil || details.details.Units.WindSpeed != "KTS" || details.updatedAt != now {
 			t.Fatalf("refreshed details for %s = %+v", spot.ID, details)
 		}
-		nameLine := ansi.Strip(model.spotNameLine(spot.Name, 80, forecast, model.spotRefreshing(spot.ID)))
+		nameLine := ansi.Strip(model.spotNameLine(spot.Name, 80, forecast, model.spotFetching(spot.ID)))
 		if strings.Contains(nameLine, ansi.Strip(model.refreshSpinner.View())+" ") {
 			t.Fatalf("completed refresh still shows spinner for %s: %q", spot.ID, nameLine)
 		}
@@ -291,15 +291,15 @@ func TestManualRefreshSpinnerIgnoresFinishingInitialRequests(t *testing.T) {
 
 	model, _ = model.Update(dashboardKey('r'))
 	model, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if cmd == nil || !model.forecasts["honolua"].refreshing || model.details["honolua"].refreshing {
-		t.Fatal("manual refresh did not track only the newly started forecast request")
+	if cmd == nil || !model.forecasts["honolua"].loading || !model.details["honolua"].loading {
+		t.Fatal("manual refresh did not preserve both active startup and refresh requests")
 	}
 
 	model, _ = model.Update(ForecastDetailsLoadedMsg{
 		SpotID:  "honolua",
 		Details: surf.ForecastDetails{SpotID: "honolua"},
 	})
-	if !model.spotRefreshing("honolua") {
+	if !model.spotFetching("honolua") {
 		t.Fatal("finishing an initial details request stopped the manual refresh spinner")
 	}
 
@@ -307,7 +307,7 @@ func TestManualRefreshSpinnerIgnoresFinishingInitialRequests(t *testing.T) {
 		SpotID:   "honolua",
 		Forecast: surf.Forecast{SpotID: "honolua"},
 	})
-	if model.spotRefreshing("honolua") {
+	if model.spotFetching("honolua") {
 		t.Fatal("spinner remained active after the manual forecast request finished")
 	}
 }
@@ -342,14 +342,14 @@ func TestRefreshKeepsPreviousAgeUntilAllSpotRequestsFinish(t *testing.T) {
 		SpotID:   "honolua",
 		Forecast: surf.Forecast{SpotID: "honolua", Slots: []surf.ForecastSlot{{Rating: "Good"}}},
 	})
-	if !model.spotRefreshing("honolua") {
+	if !model.spotFetching("honolua") {
 		t.Fatal("summary completion stopped spinner before details completed")
 	}
 	nameLine := ansi.Strip(model.spotNameLine(
 		"Honolua Bay",
 		80,
 		model.forecasts["honolua"],
-		model.spotRefreshing("honolua"),
+		model.spotFetching("honolua"),
 	))
 	if !strings.Contains(nameLine, ansi.Strip(model.refreshSpinner.View())+" updated 2h ago") {
 		t.Fatalf("partial refresh did not preserve previous freshness age: %q", nameLine)
@@ -362,7 +362,7 @@ func TestRefreshKeepsPreviousAgeUntilAllSpotRequestsFinish(t *testing.T) {
 		SpotID:  "honolua",
 		Details: surf.ForecastDetails{SpotID: "honolua"},
 	})
-	if model.spotRefreshing("honolua") {
+	if model.spotFetching("honolua") {
 		t.Fatal("spinner remained after all spot requests completed")
 	}
 	nameLine = ansi.Strip(model.spotNameLine("Honolua Bay", 80, model.forecasts["honolua"], false))
@@ -443,6 +443,9 @@ func TestBackgroundRefreshIdentifiesCachedForecastAge(t *testing.T) {
 	plain := ansi.Strip(model.spotCard(model.spots[0], 10, false))
 	if !strings.Contains(plain, "Fair") || !strings.Contains(plain, "updated 2h ago") {
 		t.Fatalf("background refresh does not identify cached data and its age:\n%s", plain)
+	}
+	if !strings.Contains(plain, ansi.Strip(model.refreshSpinner.View())+" updated 2h ago") {
+		t.Fatalf("background refresh does not show a spinner beside the cached age:\n%s", plain)
 	}
 	if strings.Contains(plain, "Last updated") {
 		t.Fatalf("background refresh includes the removed last-updated prefix:\n%s", plain)

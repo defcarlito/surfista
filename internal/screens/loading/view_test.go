@@ -28,7 +28,7 @@ func TestViewShowsGradientBannerAndFetchProgress(t *testing.T) {
 		t.Fatalf("view does not contain forecast progress:\n%s", plain)
 	}
 	lines := strings.Split(plain, "\n")
-	if got := strings.TrimSpace(lines[len(lines)-1]); got != "enter skip load and use cache" {
+	if got := strings.TrimSpace(lines[len(lines)-1]); got != "enter use cache while updates continue" {
 		t.Fatalf("bottom help = %q, want skip-cache control:\n%s", got, plain)
 	}
 	if !strings.Contains(rendered, "\x1b[") {
@@ -48,7 +48,7 @@ func TestViewSwitchesFromLocationsToForecasts(t *testing.T) {
 	if strings.Contains(locationsView, "Fetching forecasts") {
 		t.Fatalf("forecast phase appeared before locations finished:\n%s", locationsView)
 	}
-	if strings.Contains(locationsView, "skip load") {
+	if strings.Contains(locationsView, "updates continue") {
 		t.Fatalf("skip control appeared without cached data:\n%s", locationsView)
 	}
 

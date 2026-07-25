@@ -20,7 +20,6 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m, nil
 		}
 		state.loading = false
-		state.refreshing = false
 		state.err = msg.Err
 		if msg.Err == nil {
 			state.forecast = msg.Forecast
@@ -33,14 +32,13 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 		m.clampForecastDayOffset()
 		m.applySort()
-		m.finishSpotRefresh(msg.SpotID)
+		m.finishSpotFetch(msg.SpotID)
 	case ForecastDetailsLoadedMsg:
 		state, tracked := m.details[msg.SpotID]
 		if !tracked {
 			return m, nil
 		}
 		state.loading = false
-		state.refreshing = false
 		state.err = msg.Err
 		if msg.Err == nil {
 			state.details = msg.Details
@@ -53,9 +51,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				m.applySort()
 			}
 		}
-		m.finishSpotRefresh(msg.SpotID)
+		m.finishSpotFetch(msg.SpotID)
 	case spinner.TickMsg:
-		if !m.hasActiveRefreshes() {
+		if !m.hasActiveFetches() {
 			return m, nil
 		}
 		var cmd tea.Cmd

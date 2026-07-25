@@ -14,22 +14,20 @@ import (
 const forecastTimeout = 20 * time.Second
 
 type forecastState struct {
-	forecast          surf.Forecast
-	updatedAt         time.Time
-	refreshDisplayAt  time.Time
-	refreshDisplaySet bool
-	loading           bool
-	fetched           bool
-	refreshing        bool
-	err               error
+	forecast        surf.Forecast
+	updatedAt       time.Time
+	fetchDisplayAt  time.Time
+	fetchDisplaySet bool
+	loading         bool
+	fetched         bool
+	err             error
 }
 
 type forecastDetailsState struct {
-	details    surf.ForecastDetails
-	updatedAt  time.Time
-	loading    bool
-	refreshing bool
-	err        error
+	details   surf.ForecastDetails
+	updatedAt time.Time
+	loading   bool
+	err       error
 }
 
 func (s forecastState) usable() bool {
@@ -95,15 +93,19 @@ func New(provider surf.ForecastProvider, remover Remover, spots []surf.Spot, loa
 	detailStates := make(map[string]forecastDetailsState, len(spots))
 	for _, spot := range spots {
 		entry := cached[spot.ID]
+		forecastLoading := provider != nil
+		detailsLoading := detailsProvider != nil
 		states[spot.ID] = forecastState{
-			forecast:  entry.Forecast,
-			updatedAt: entry.ForecastUpdatedAt,
-			loading:   provider != nil,
+			forecast:        entry.Forecast,
+			updatedAt:       entry.ForecastUpdatedAt,
+			fetchDisplayAt:  entry.ForecastUpdatedAt,
+			fetchDisplaySet: forecastLoading || detailsLoading,
+			loading:         forecastLoading,
 		}
 		detailStates[spot.ID] = forecastDetailsState{
 			details:   entry.Details,
 			updatedAt: entry.DetailsUpdatedAt,
-			loading:   detailsProvider != nil,
+			loading:   detailsLoading,
 		}
 	}
 	addedOrder := make(map[string]int, len(spots))
@@ -223,14 +225,13 @@ func (m Model) canRefresh() bool {
 func (m *Model) refresh() tea.Cmd {
 	commands := make([]tea.Cmd, 0, len(m.spots)*2)
 	for _, spot := range m.spots {
-		wasRefreshing := m.spotRefreshing(spot.ID)
+		wasFetching := m.spotFetching(spot.ID)
 		previousUpdatedAt := m.forecasts[spot.ID].updatedAt
 		started := false
 		if m.provider != nil {
 			state := m.forecasts[spot.ID]
 			if !state.loading {
 				state.loading = true
-				state.refreshing = true
 				state.err = nil
 				m.forecasts[spot.ID] = state
 				commands = append(commands, m.fetchForecast(spot.ID))
@@ -241,17 +242,16 @@ func (m *Model) refresh() tea.Cmd {
 			state := m.details[spot.ID]
 			if !state.loading {
 				state.loading = true
-				state.refreshing = true
 				state.err = nil
 				m.details[spot.ID] = state
 				commands = append(commands, m.fetchForecastDetails(spot.ID))
 				started = true
 			}
 		}
-		if started && !wasRefreshing {
+		if started && !wasFetching {
 			state := m.forecasts[spot.ID]
-			state.refreshDisplayAt = previousUpdatedAt
-			state.refreshDisplaySet = true
+			state.fetchDisplayAt = previousUpdatedAt
+			state.fetchDisplaySet = true
 			m.forecasts[spot.ID] = state
 		}
 	}
@@ -262,29 +262,38 @@ func (m *Model) refresh() tea.Cmd {
 	return tea.Batch(commands...)
 }
 
-func (m Model) spotRefreshing(spotID string) bool {
-	return m.forecasts[spotID].refreshing || m.details[spotID].refreshing
+func (m Model) spotFetching(spotID string) bool {
+	return m.forecasts[spotID].loading || m.details[spotID].loading
 }
 
-func (m Model) hasActiveRefreshes() bool {
+func (m Model) hasActiveFetches() bool {
 	for _, spot := range m.spots {
-		if m.spotRefreshing(spot.ID) {
+		if m.spotFetching(spot.ID) {
 			return true
 		}
 	}
 	return false
 }
 
-func (m *Model) finishSpotRefresh(spotID string) {
-	if m.spotRefreshing(spotID) {
+// FetchSpinnerTick starts the dashboard's per-spot fetch animation when
+// startup leaves the loading screen before every request has resolved.
+func (m Model) FetchSpinnerTick() tea.Cmd {
+	if !m.hasActiveFetches() {
+		return nil
+	}
+	return m.refreshSpinner.Tick
+}
+
+func (m *Model) finishSpotFetch(spotID string) {
+	if m.spotFetching(spotID) {
 		return
 	}
 	state, tracked := m.forecasts[spotID]
 	if !tracked {
 		return
 	}
-	state.refreshDisplayAt = time.Time{}
-	state.refreshDisplaySet = false
+	state.fetchDisplayAt = time.Time{}
+	state.fetchDisplaySet = false
 	m.forecasts[spotID] = state
 }
 

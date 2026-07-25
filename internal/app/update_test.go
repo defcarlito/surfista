@@ -193,8 +193,8 @@ func TestEnterSkipsStartupWhenCacheIsAvailable(t *testing.T) {
 
 	updatedModel, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	updated := updatedModel.(Model)
-	if cmd != nil || updated.current != homeScreen {
-		t.Fatal("enter did not skip startup loading")
+	if cmd == nil || updated.current != homeScreen {
+		t.Fatal("enter did not skip startup loading and start the dashboard spinner")
 	}
 	if pending := updated.dashboard.PendingInitialFetches(); pending != 2 {
 		t.Fatalf("background refreshes after manual skip = %d, want 2", pending)
@@ -247,8 +247,8 @@ func TestStartupWaitExpiryOpensDashboardWhileRefreshContinues(t *testing.T) {
 
 	updatedModel, cmd := model.Update(startupWaitExpiredMsg{})
 	updated := updatedModel.(Model)
-	if cmd != nil || updated.current != homeScreen {
-		t.Fatal("startup wait expiry did not open the cached dashboard")
+	if cmd == nil || updated.current != homeScreen {
+		t.Fatal("startup wait expiry did not open the cached dashboard and start its spinner")
 	}
 	if pending := updated.dashboard.PendingInitialFetches(); pending != 2 {
 		t.Fatalf("background refreshes after startup expiry = %d, want 2", pending)

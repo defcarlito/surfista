@@ -26,7 +26,7 @@ func (m Model) View() string {
 
 	if m.terminalWidth <= 0 || m.terminalHeight <= 0 {
 		if m.canSkip {
-			help := ui.LoadingHelpStyle.Width(contentWidth).Render("enter skip load and use cache")
+			help := ui.LoadingHelpStyle.Width(contentWidth).Render("enter use cache while updates continue")
 			return lipgloss.JoinVertical(lipgloss.Center, content, "", help)
 		}
 		return content
@@ -45,6 +45,6 @@ func (m Model) View() string {
 	if !m.canSkip {
 		return body
 	}
-	help := ui.LoadingHelpStyle.Width(m.terminalWidth).Render("enter skip load and use cache")
+	help := ui.LoadingHelpStyle.Width(m.terminalWidth).Render("enter use cache while updates continue")
 	return lipgloss.JoinVertical(lipgloss.Left, body, help)
 }

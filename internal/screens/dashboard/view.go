@@ -510,7 +510,7 @@ func (m Model) forecastTable(width int) string {
 func (m Model) spotCard(spot surf.Spot, slotWidth int, selected bool) string {
 	state := m.forecasts[spot.ID]
 	innerWidth := slotWidth*len(dashboardHours) + len(dashboardHours) - 1
-	name := m.spotNameLine(spot.Name, innerWidth, state, m.spotRefreshing(spot.ID))
+	name := m.spotNameLine(spot.Name, innerWidth, state, m.spotFetching(spot.ID))
 
 	if state.loading && !state.usable() {
 		return statusCard(name, ui.Muted("Loading forecast…"), innerWidth, selected)
@@ -549,24 +549,24 @@ func (m Model) spotCard(spot surf.Spot, slotWidth int, selected bool) string {
 	}, "\n")
 }
 
-func (m Model) spotNameLine(name string, width int, state forecastState, refreshing bool) string {
+func (m Model) spotNameLine(name string, width int, state forecastState, fetching bool) string {
 	styledName := ui.DashboardSpotStyle.Render(ansi.Truncate(name, width, ""))
 	displayUpdatedAt := state.updatedAt
-	if refreshing && state.refreshDisplaySet {
-		displayUpdatedAt = state.refreshDisplayAt
+	if fetching && state.fetchDisplaySet {
+		displayUpdatedAt = state.fetchDisplayAt
 	}
 	if displayUpdatedAt.IsZero() {
-		if refreshing {
+		if fetching {
 			return m.spotNameLineWithFreshness(styledName, width, m.refreshSpinner.View())
 		}
 		return lipgloss.NewStyle().Width(width).MaxWidth(width).Align(lipgloss.Center).Render(styledName)
 	}
 
 	freshness := "updated " + formatForecastAge(m.now(), displayUpdatedAt)
-	if state.fetched && !state.loading && state.err == nil && !refreshing {
+	if state.fetched && !state.loading && state.err == nil && !fetching {
 		freshness = "updated now"
 	}
-	if refreshing {
+	if fetching {
 		freshness = m.refreshSpinner.View() + " " + freshness
 	}
 	return m.spotNameLineWithFreshness(styledName, width, freshness)

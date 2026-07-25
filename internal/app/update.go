@@ -34,6 +34,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if _, ok := msg.(startupWaitExpiredMsg); ok {
 		if m.current == loadingScreen {
 			m.current = homeScreen
+			return m, m.dashboard.FetchSpinnerTick()
 		}
 		return m, nil
 	}
@@ -84,7 +85,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case loadingScreen:
 			if key.String() == "enter" && m.loading.CanSkip() {
 				m.current = homeScreen
-				return m, nil
+				return m, m.dashboard.FetchSpinnerTick()
 			}
 		}
 	}
