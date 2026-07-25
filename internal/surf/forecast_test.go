@@ -3,9 +3,12 @@ package surf
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -264,6 +267,68 @@ func TestSurflineForecastReportsNonJSONResponse(t *testing.T) {
 	_, err = provider.Forecast(context.Background(), "spot-id")
 	if err == nil || !strings.Contains(err.Error(), "unexpected Content-Type") {
 		t.Fatalf("error = %v, want unexpected Content-Type error", err)
+	}
+}
+
+func TestSurflineForecastLimitsConcurrentHTTPRequests(t *testing.T) {
+	t.Parallel()
+
+	var active atomic.Int32
+	var maximum atomic.Int32
+	started := make(chan struct{}, 6)
+	release := make(chan struct{})
+	httpClient := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		current := active.Add(1)
+		for {
+			previous := maximum.Load()
+			if current <= previous || maximum.CompareAndSwap(previous, current) {
+				break
+			}
+		}
+		started <- struct{}{}
+		<-release
+		active.Add(-1)
+		return forecastHTTPResponse(http.StatusOK, "application/json", `{}`), nil
+	})}
+	provider, err := NewSurflineForecastProvider("https://example.test", httpClient)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var group sync.WaitGroup
+	errs := make(chan error, 6)
+	for index := range 6 {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			var destination map[string]any
+			errs <- provider.getForecast(context.Background(), "wave", fmt.Sprintf("spot-%d", index), &destination)
+		}()
+	}
+
+	for range maxConcurrentRequests {
+		<-started
+	}
+	tooManyStarted := false
+	select {
+	case <-started:
+		tooManyStarted = true
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(release)
+	group.Wait()
+	close(errs)
+
+	if tooManyStarted {
+		t.Fatal("more than two Surfline HTTP requests started concurrently")
+	}
+	for err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := maximum.Load(); got != maxConcurrentRequests {
+		t.Fatalf("maximum concurrent requests = %d, want %d", got, maxConcurrentRequests)
 	}
 }
 

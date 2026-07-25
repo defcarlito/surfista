@@ -16,6 +16,7 @@ import (
 
 const (
 	forecastResponseLimit = 4 << 20
+	maxConcurrentRequests = 2
 	// surflineForecastDays covers today and the following nine days shown in
 	// Surfline's spot forecast.
 	surflineForecastDays = 10
@@ -30,8 +31,9 @@ var ErrEmptySpotID = errors.New("spot ID is empty")
 // private to this package and the base URL is injectable for deterministic
 // tests.
 type SurflineForecastProvider struct {
-	baseURL *url.URL
-	client  *http.Client
+	baseURL      *url.URL
+	client       *http.Client
+	requestSlots chan struct{}
 }
 
 func NewSurflineForecastProvider(baseURL string, client *http.Client) (*SurflineForecastProvider, error) {
@@ -50,7 +52,11 @@ func NewSurflineForecastProvider(baseURL string, client *http.Client) (*Surfline
 		client = http.DefaultClient
 	}
 
-	return &SurflineForecastProvider{baseURL: parsed, client: client}, nil
+	return &SurflineForecastProvider{
+		baseURL:      parsed,
+		client:       client,
+		requestSlots: make(chan struct{}, maxConcurrentRequests),
+	}, nil
 }
 
 func (p *SurflineForecastProvider) Forecast(ctx context.Context, spotID string) (Forecast, error) {
@@ -355,6 +361,13 @@ func (p *SurflineForecastProvider) getForecast(ctx context.Context, kind, spotID
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", surfistaUserAgent)
+
+	select {
+	case p.requestSlots <- struct{}{}:
+		defer func() { <-p.requestSlots }()
+	case <-ctx.Done():
+		return fmt.Errorf("fetch Surfline %s forecast: %w", kind, ctx.Err())
+	}
 
 	resp, err := p.client.Do(req)
 	if err != nil {
