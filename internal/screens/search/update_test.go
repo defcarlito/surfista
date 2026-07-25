@@ -10,6 +10,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"surfista/internal/surf"
+	"surfista/internal/ui"
 )
 
 type fakeSearcher struct {
@@ -299,6 +300,14 @@ func TestWindowResizeUpdatesContentAndInputWidths(t *testing.T) {
 	}
 	if strings.Contains(narrow.View(), "Search Surfline") {
 		t.Fatal("narrow view rendered the old text title")
+	}
+	if strings.Contains(narrow.View(), "surfista") {
+		t.Fatal("narrow view rendered the compact app title")
+	}
+	for _, bannerLine := range strings.Split(ui.SearchBanner, "\n") {
+		if line := strings.TrimSpace(bannerLine); line != "" && strings.Contains(narrow.View(), line) {
+			t.Fatalf("narrow view rendered search banner line %q", line)
+		}
 	}
 }
 

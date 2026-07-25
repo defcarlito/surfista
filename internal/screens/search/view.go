@@ -25,21 +25,24 @@ func (m Model) View() string {
 		Align(lipgloss.Left).
 		Render(lipgloss.JoinVertical(lipgloss.Left, sections...))
 
-	header := ui.GradientText(ui.SearchBanner)
-	headerWidth := lipgloss.Width(ui.SearchBanner)
-	if m.terminalWidth > 0 && headerWidth > m.terminalWidth-(wideHorizontalMargin*2) {
-		header = ui.Title("surfista")
-		headerWidth = lipgloss.Width(header)
+	bannerWidth := lipgloss.Width(ui.SearchBanner)
+	showBanner := m.terminalWidth <= 0 || bannerWidth <= m.terminalWidth-(wideHorizontalMargin*2)
+	layoutWidth := width
+	if showBanner {
+		layoutWidth = max(layoutWidth, bannerWidth)
 	}
-	layoutWidth := max(width, headerWidth)
-	header = ui.SearchTitleStyle.Width(layoutWidth).Render(header)
 	controls = lipgloss.PlaceHorizontal(layoutWidth, lipgloss.Center, controls)
 
+	content := controls
+	if showBanner {
+		header := ui.SearchTitleStyle.Width(layoutWidth).Render(ui.GradientText(ui.SearchBanner))
+		content = lipgloss.JoinVertical(lipgloss.Left, header, "", controls)
+	}
 	column := lipgloss.NewStyle().
 		Width(layoutWidth).
 		Align(lipgloss.Left).
 		MarginTop(1).
-		Render(lipgloss.JoinVertical(lipgloss.Left, header, "", controls))
+		Render(content)
 
 	if m.terminalWidth <= 0 {
 		return column
