@@ -147,14 +147,14 @@ func (m Model) detailsFreshness() string {
 		label = m.refreshSpinner.View() + " updated " + freshness
 	case state.err != nil && state.usable():
 		failed = true
-		label = "couldn’t update · using cache"
+		label = "failed"
 		if !state.updatedAt.IsZero() {
 			age := formatForecastAge(m.now(), state.updatedAt)
-			label = "couldn’t update · " + strings.TrimSuffix(age, " ago") + " old"
+			label += " · " + strings.TrimSuffix(age, " ago")
 		}
 	case state.err != nil:
 		failed = true
-		label = "details unavailable"
+		label = "unavailable"
 	case state.usable():
 		label = "updated"
 		if !state.updatedAt.IsZero() {

@@ -437,7 +437,7 @@ func TestDetailRefreshFailureStaysInsideDetailsView(t *testing.T) {
 	}
 
 	status := ansi.Strip(model.detailsFreshness())
-	if !strings.Contains(status, "● couldn’t update · 3m old") {
+	if !strings.Contains(status, "● failed · 3m") {
 		t.Fatalf("failed detail status = %q", status)
 	}
 	cardStatus := ansi.Strip(model.spotNameLine("Honolua Bay", 80, model.forecasts["honolua"], false))
