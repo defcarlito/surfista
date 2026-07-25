@@ -19,8 +19,8 @@ const (
 	pageMargin              = 2
 	maxSlotWidth            = 10
 	gridBorderWidth         = 10
-	removalDialogWidth      = 48
-	removalDialogFrame      = 6
+	confirmationDialogWidth = 48
+	confirmationDialogFrame = 6
 	spaciousLayoutMinHeight = 13
 )
 
@@ -52,7 +52,10 @@ func (m Model) View() string {
 		content = lipgloss.PlaceHorizontal(m.terminalWidth, lipgloss.Center, content)
 	}
 	if m.confirmRemoval {
-		return m.removalOverlay(content)
+		return m.confirmationOverlay(content, m.removalDialog())
+	}
+	if m.confirmRefresh {
+		return m.confirmationOverlay(content, m.refreshDialog())
 	}
 	if m.detailsOpen {
 		return m.detailsOverlay(content)
@@ -420,8 +423,7 @@ func (m *Model) ensureSelectedVisible() {
 	}
 }
 
-func (m Model) removalOverlay(dashboard string) string {
-	dialog := m.removalDialog()
+func (m Model) confirmationOverlay(dashboard, dialog string) string {
 	if m.terminalWidth <= 0 || m.terminalHeight <= 0 {
 		return lipgloss.JoinVertical(lipgloss.Center, dashboard, "", dialog)
 	}
@@ -438,11 +440,11 @@ func (m Model) removalOverlay(dashboard string) string {
 }
 
 func (m Model) removalDialog() string {
-	width := removalDialogWidth
+	width := confirmationDialogWidth
 	if m.terminalWidth > 0 {
-		width = max(1, min(width, m.terminalWidth-removalDialogFrame))
+		width = max(1, min(width, m.terminalWidth-confirmationDialogFrame))
 	}
-	contentWidth := max(1, width-removalDialogFrame)
+	contentWidth := max(1, width-confirmationDialogFrame)
 
 	status := ui.DashboardRemovalHelpStyle.Render("enter ") +
 		ui.SuccessStyle.Render("remove") +
@@ -459,6 +461,30 @@ func (m Model) removalDialog() string {
 	question := ui.DashboardRemovalBodyStyle.Render("Remove ") +
 		ui.DashboardSpotStyle.Render(m.removalSpot.Name) +
 		ui.DashboardRemovalBodyStyle.Render(" from tracked locations?")
+	question = lipgloss.NewStyle().Width(contentWidth).Align(lipgloss.Center).Render(question)
+
+	content := lipgloss.JoinVertical(
+		lipgloss.Center,
+		question,
+		"",
+		status,
+	)
+	return ui.DashboardRemovalDialogStyle.Width(width).Render(content)
+}
+
+func (m Model) refreshDialog() string {
+	width := confirmationDialogWidth
+	if m.terminalWidth > 0 {
+		width = max(1, min(width, m.terminalWidth-confirmationDialogFrame))
+	}
+	contentWidth := max(1, width-confirmationDialogFrame)
+
+	status := ui.DashboardRemovalHelpStyle.Render("enter ") +
+		ui.SuccessStyle.Render("refresh") +
+		ui.DashboardRemovalHelpStyle.Render(" • esc ") +
+		ui.ErrorStyle.Render("cancel")
+	status = lipgloss.NewStyle().Width(contentWidth).Align(lipgloss.Center).Render(status)
+	question := ui.DashboardRemovalBodyStyle.Render("Refresh all forecast data?")
 	question = lipgloss.NewStyle().Width(contentWidth).Align(lipgloss.Center).Render(question)
 
 	content := lipgloss.JoinVertical(

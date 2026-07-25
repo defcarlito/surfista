@@ -77,6 +77,16 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+		if m.confirmRefresh {
+			switch msg.String() {
+			case "enter":
+				m.confirmRefresh = false
+				return m, m.refresh()
+			case "esc":
+				m.confirmRefresh = false
+			}
+			return m, nil
+		}
 		if m.detailsOpen {
 			switch msg.String() {
 			case "h", "left":
@@ -140,7 +150,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		case "s":
 			return m, m.cycleSort()
 		case "r":
-			return m, m.refresh()
+			if m.canRefresh() {
+				m.confirmRefresh = true
+			}
 		case "u":
 			return m, m.openSelectedURLCmd()
 		case "x":

@@ -192,8 +192,12 @@ func TestRRefreshesAllCachedForecastDataWithoutClearingFallback(t *testing.T) {
 	}
 
 	model, cmd := model.Update(dashboardKey('r'))
-	if cmd == nil {
-		t.Fatal("r returned no refresh command")
+	if cmd != nil || !model.confirmRefresh {
+		t.Fatal("r did not open refresh confirmation without starting requests")
+	}
+	model, cmd = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if cmd == nil || model.confirmRefresh {
+		t.Fatal("enter did not close confirmation and start refresh")
 	}
 	if model.selectedIndex != 1 {
 		t.Fatalf("refresh changed selection to %d, want 1", model.selectedIndex)
@@ -208,8 +212,13 @@ func TestRRefreshesAllCachedForecastDataWithoutClearingFallback(t *testing.T) {
 			t.Fatalf("refresh cleared cached details for %s: %+v", spot.ID, details)
 		}
 	}
-	if _, duplicate := model.Update(dashboardKey('r')); duplicate != nil {
-		t.Fatal("r started duplicate requests while refresh was already in flight")
+	model, duplicate := model.Update(dashboardKey('r'))
+	if duplicate != nil || !model.confirmRefresh {
+		t.Fatal("r did not reopen confirmation while refresh was in flight")
+	}
+	model, duplicate = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if duplicate != nil || model.confirmRefresh {
+		t.Fatal("confirming an in-flight refresh started duplicate requests")
 	}
 
 	messages := commandMessages(t, cmd)
@@ -1172,7 +1181,7 @@ func TestRemoveConfirmationCanBeCancelled(t *testing.T) {
 	}
 	assertDialogTextCentered(t, model.removalDialog(), "Remove Honolua Bay from tracked locations?")
 	assertDialogTextCentered(t, model.removalDialog(), "enter remove • esc cancel")
-	assertRemovalDialogCentered(t, model)
+	assertConfirmationDialogCentered(t, model, model.removalDialog())
 
 	model, _ = model.Update(dashboardKey('j'))
 	if model.selectedIndex != 0 {
@@ -1187,6 +1196,52 @@ func TestRemoveConfirmationCanBeCancelled(t *testing.T) {
 	}
 	if len(remover.spotIDs) != 0 {
 		t.Fatalf("cancel called remover with %v", remover.spotIDs)
+	}
+}
+
+func TestRefreshConfirmationCanBeCancelled(t *testing.T) {
+	t.Parallel()
+
+	provider := &fakeForecastProvider{}
+	model := New(provider, nil, []surf.Spot{{ID: "honolua", Name: "Honolua Bay"}}, nil)
+	model, _ = model.Update(ForecastLoadedMsg{SpotID: "honolua", Forecast: surf.Forecast{SpotID: "honolua"}})
+	model, _ = model.Update(ForecastDetailsLoadedMsg{SpotID: "honolua", Details: surf.ForecastDetails{SpotID: "honolua"}})
+	model.selectedIndex = 0
+	model, _ = model.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+
+	model, cmd := model.Update(dashboardKey('r'))
+	if cmd != nil || !model.confirmRefresh {
+		t.Fatal("r did not open refresh confirmation without starting requests")
+	}
+	plain := ansi.Strip(model.View())
+	for _, want := range []string{"Refresh all forecast data?", "enter refresh", "esc cancel"} {
+		if !strings.Contains(plain, want) {
+			t.Fatalf("refresh confirmation does not contain %q:\n%s", want, plain)
+		}
+	}
+	if !strings.Contains(model.refreshDialog(), ui.SuccessStyle.Render("refresh")) {
+		t.Fatal("refresh action does not use the success style")
+	}
+	if !strings.Contains(model.refreshDialog(), ui.ErrorStyle.Render("cancel")) {
+		t.Fatal("refresh cancel action does not use the error style")
+	}
+	assertDialogTextCentered(t, model.refreshDialog(), "Refresh all forecast data?")
+	assertDialogTextCentered(t, model.refreshDialog(), "enter refresh • esc cancel")
+	assertConfirmationDialogCentered(t, model, model.refreshDialog())
+
+	model, _ = model.Update(dashboardKey('j'))
+	if model.selectedIndex != 0 {
+		t.Fatalf("selection moved while refresh confirmation was open: %d", model.selectedIndex)
+	}
+	model, cmd = model.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
+	if cmd != nil || model.confirmRefresh {
+		t.Fatal("esc did not cancel refresh confirmation")
+	}
+	if model.selectedIndex != 0 {
+		t.Fatalf("refresh cancellation changed selection to %d", model.selectedIndex)
+	}
+	if len(provider.spotIDs) != 0 || len(provider.detailSpotIDs) != 0 {
+		t.Fatalf("cancel started refresh requests: forecasts=%v details=%v", provider.spotIDs, provider.detailSpotIDs)
 	}
 }
 
@@ -1208,10 +1263,10 @@ func assertDialogTextCentered(t *testing.T, dialog, text string) {
 	t.Fatalf("dialog does not contain %q", text)
 }
 
-func assertRemovalDialogCentered(t *testing.T, model Model) {
+func assertConfirmationDialogCentered(t *testing.T, model Model, renderedDialog string) {
 	t.Helper()
 
-	dialog := ansi.Strip(model.removalDialog())
+	dialog := ansi.Strip(renderedDialog)
 	dialogLines := strings.Split(dialog, "\n")
 	viewLines := strings.Split(ansi.Strip(model.View()), "\n")
 	wantX := (model.terminalWidth - ansi.StringWidth(dialogLines[0])) / 2

@@ -61,6 +61,7 @@ type Model struct {
 	selectedIndex     int
 	scrollOffset      int
 	confirmRemoval    bool
+	confirmRefresh    bool
 	removing          bool
 	removalSpot       surf.Spot
 	removalErr        error
@@ -140,6 +141,10 @@ func (m Model) ConfirmingRemoval() bool {
 	return m.confirmRemoval
 }
 
+func (m Model) ConfirmingRefresh() bool {
+	return m.confirmRefresh
+}
+
 func (m Model) ShowingDetails() bool {
 	return m.detailsOpen
 }
@@ -182,6 +187,7 @@ func (m *Model) removeSpot(spotID string) {
 	m.clampScrollOffset()
 	m.selectedIndex = -1
 	m.confirmRemoval = false
+	m.confirmRefresh = false
 	m.removing = false
 	m.removalSpot = surf.Spot{}
 	m.removalErr = nil
