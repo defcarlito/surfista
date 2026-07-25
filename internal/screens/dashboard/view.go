@@ -558,9 +558,9 @@ func (m Model) spotNameLine(name string, width int, state forecastState, refresh
 		return lipgloss.NewStyle().Width(width).MaxWidth(width).Align(lipgloss.Center).Render(styledName)
 	}
 
-	freshness := formatForecastAge(m.now(), state.updatedAt)
+	freshness := "updated " + formatForecastAge(m.now(), state.updatedAt)
 	if state.fetched && !state.loading && state.err == nil {
-		freshness = "now"
+		freshness = "updated now"
 	}
 	if refreshing {
 		freshness = m.refreshSpinner.View() + " " + freshness

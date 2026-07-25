@@ -213,7 +213,7 @@ func TestRRefreshesAllCachedForecastDataWithoutClearingFallback(t *testing.T) {
 			t.Fatalf("refresh cleared cached details for %s: %+v", spot.ID, details)
 		}
 		nameLine := ansi.Strip(model.spotNameLine(spot.Name, 80, forecast, true))
-		if !strings.Contains(nameLine, ansi.Strip(model.refreshSpinner.View())+" 2h ago") {
+		if !strings.Contains(nameLine, ansi.Strip(model.refreshSpinner.View())+" updated 2h ago") {
 			t.Fatalf("refresh spinner is not immediately left of cached age for %s: %q", spot.ID, nameLine)
 		}
 	}
@@ -341,7 +341,7 @@ func TestFailedRefreshKeepsCachedForecastAndShowsAge(t *testing.T) {
 	}
 	card := model.spotCard(model.spots[0], 10, false)
 	plain := ansi.Strip(card)
-	if !strings.Contains(plain, "Fair") || !strings.Contains(plain, "1h ago") {
+	if !strings.Contains(plain, "Fair") || !strings.Contains(plain, "updated 1h ago") {
 		t.Fatalf("cached fallback card is missing forecast or age:\n%s", plain)
 	}
 	if strings.Contains(plain, "Last updated") {
@@ -350,12 +350,12 @@ func TestFailedRefreshKeepsCachedForecastAndShowsAge(t *testing.T) {
 	if strings.Contains(plain, "403") || strings.Contains(plain, "<html>") {
 		t.Fatalf("cached fallback card leaked the raw provider error:\n%s", plain)
 	}
-	styledAge := ui.DashboardSubtitleStyle.Render("1h ago")
+	styledAge := ui.DashboardSubtitleStyle.Render("updated 1h ago")
 	if !strings.Contains(card, styledAge) {
 		t.Fatal("cached age does not use the dashboard subtitle color")
 	}
 	nameLine := ansi.Strip(model.spotNameLine("Honolua Bay", 80, state, false))
-	if !strings.HasSuffix(nameLine, "1h ago ") {
+	if !strings.HasSuffix(nameLine, "updated 1h ago ") {
 		t.Fatalf("cached age does not have right-border spacing: %q", nameLine)
 	}
 }
@@ -379,7 +379,7 @@ func TestBackgroundRefreshIdentifiesCachedForecastAge(t *testing.T) {
 	model.now = func() time.Time { return now }
 
 	plain := ansi.Strip(model.spotCard(model.spots[0], 10, false))
-	if !strings.Contains(plain, "Fair") || !strings.Contains(plain, "2h ago") {
+	if !strings.Contains(plain, "Fair") || !strings.Contains(plain, "updated 2h ago") {
 		t.Fatalf("background refresh does not identify cached data and its age:\n%s", plain)
 	}
 	if strings.Contains(plain, "Last updated") {
@@ -408,8 +408,8 @@ func TestSuccessfulRefreshReplacesAndPersistsCache(t *testing.T) {
 		t.Fatalf("persisted cache entry = %+v", got)
 	}
 	nameLine := ansi.Strip(model.spotNameLine("Honolua Bay", 80, model.forecasts["honolua"], false))
-	if !strings.HasSuffix(nameLine, "now ") {
-		t.Fatalf("successful fetch freshness = %q, want now", nameLine)
+	if !strings.HasSuffix(nameLine, "updated now ") {
+		t.Fatalf("successful fetch freshness = %q, want updated now", nameLine)
 	}
 }
 
