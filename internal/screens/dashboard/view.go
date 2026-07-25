@@ -551,15 +551,19 @@ func (m Model) spotCard(spot surf.Spot, slotWidth int, selected bool) string {
 
 func (m Model) spotNameLine(name string, width int, state forecastState, refreshing bool) string {
 	styledName := ui.DashboardSpotStyle.Render(ansi.Truncate(name, width, ""))
-	if state.updatedAt.IsZero() {
+	displayUpdatedAt := state.updatedAt
+	if refreshing && state.refreshDisplaySet {
+		displayUpdatedAt = state.refreshDisplayAt
+	}
+	if displayUpdatedAt.IsZero() {
 		if refreshing {
 			return m.spotNameLineWithFreshness(styledName, width, m.refreshSpinner.View())
 		}
 		return lipgloss.NewStyle().Width(width).MaxWidth(width).Align(lipgloss.Center).Render(styledName)
 	}
 
-	freshness := "updated " + formatForecastAge(m.now(), state.updatedAt)
-	if state.fetched && !state.loading && state.err == nil {
+	freshness := "updated " + formatForecastAge(m.now(), displayUpdatedAt)
+	if state.fetched && !state.loading && state.err == nil && !refreshing {
 		freshness = "updated now"
 	}
 	if refreshing {

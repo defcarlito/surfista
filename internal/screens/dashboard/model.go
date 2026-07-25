@@ -14,12 +14,14 @@ import (
 const forecastTimeout = 20 * time.Second
 
 type forecastState struct {
-	forecast   surf.Forecast
-	updatedAt  time.Time
-	loading    bool
-	fetched    bool
-	refreshing bool
-	err        error
+	forecast          surf.Forecast
+	updatedAt         time.Time
+	refreshDisplayAt  time.Time
+	refreshDisplaySet bool
+	loading           bool
+	fetched           bool
+	refreshing        bool
+	err               error
 }
 
 type forecastDetailsState struct {
@@ -221,6 +223,9 @@ func (m Model) canRefresh() bool {
 func (m *Model) refresh() tea.Cmd {
 	commands := make([]tea.Cmd, 0, len(m.spots)*2)
 	for _, spot := range m.spots {
+		wasRefreshing := m.spotRefreshing(spot.ID)
+		previousUpdatedAt := m.forecasts[spot.ID].updatedAt
+		started := false
 		if m.provider != nil {
 			state := m.forecasts[spot.ID]
 			if !state.loading {
@@ -229,6 +234,7 @@ func (m *Model) refresh() tea.Cmd {
 				state.err = nil
 				m.forecasts[spot.ID] = state
 				commands = append(commands, m.fetchForecast(spot.ID))
+				started = true
 			}
 		}
 		if m.detailsProvider != nil {
@@ -239,7 +245,14 @@ func (m *Model) refresh() tea.Cmd {
 				state.err = nil
 				m.details[spot.ID] = state
 				commands = append(commands, m.fetchForecastDetails(spot.ID))
+				started = true
 			}
+		}
+		if started && !wasRefreshing {
+			state := m.forecasts[spot.ID]
+			state.refreshDisplayAt = previousUpdatedAt
+			state.refreshDisplaySet = true
+			m.forecasts[spot.ID] = state
 		}
 	}
 	if len(commands) == 0 {
@@ -260,6 +273,19 @@ func (m Model) hasActiveRefreshes() bool {
 		}
 	}
 	return false
+}
+
+func (m *Model) finishSpotRefresh(spotID string) {
+	if m.spotRefreshing(spotID) {
+		return
+	}
+	state, tracked := m.forecasts[spotID]
+	if !tracked {
+		return
+	}
+	state.refreshDisplayAt = time.Time{}
+	state.refreshDisplaySet = false
+	m.forecasts[spotID] = state
 }
 
 // PendingInitialFetches reports how many startup Surfline requests are still

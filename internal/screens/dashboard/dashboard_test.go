@@ -312,6 +312,68 @@ func TestManualRefreshSpinnerIgnoresFinishingInitialRequests(t *testing.T) {
 	}
 }
 
+func TestRefreshKeepsPreviousAgeUntilAllSpotRequestsFinish(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.July, 24, 12, 0, 0, 0, time.UTC)
+	updatedAt := now.Add(-2 * time.Hour)
+	cache := &fakeForecastCache{entries: map[string]surf.ForecastCacheEntry{
+		"honolua": {
+			SpotID:            "honolua",
+			Forecast:          surf.Forecast{SpotID: "honolua", Slots: []surf.ForecastSlot{{Rating: "Fair"}}},
+			ForecastUpdatedAt: updatedAt,
+			Details:           surf.ForecastDetails{SpotID: "honolua"},
+			DetailsUpdatedAt:  updatedAt,
+		},
+	}}
+	model := New(
+		&fakeForecastProvider{},
+		cache,
+		[]surf.Spot{{ID: "honolua", Name: "Honolua Bay"}},
+		nil,
+	)
+	model.now = func() time.Time { return now }
+	model, _ = model.Update(ForecastLoadedMsg{SpotID: "honolua", Err: errors.New("initial forecast failed")})
+	model, _ = model.Update(ForecastDetailsLoadedMsg{SpotID: "honolua", Err: errors.New("initial details failed")})
+	model, _ = model.Update(dashboardKey('r'))
+	model, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+
+	model, _ = model.Update(ForecastLoadedMsg{
+		SpotID:   "honolua",
+		Forecast: surf.Forecast{SpotID: "honolua", Slots: []surf.ForecastSlot{{Rating: "Good"}}},
+	})
+	if !model.spotRefreshing("honolua") {
+		t.Fatal("summary completion stopped spinner before details completed")
+	}
+	nameLine := ansi.Strip(model.spotNameLine(
+		"Honolua Bay",
+		80,
+		model.forecasts["honolua"],
+		model.spotRefreshing("honolua"),
+	))
+	if !strings.Contains(nameLine, ansi.Strip(model.refreshSpinner.View())+" updated 2h ago") {
+		t.Fatalf("partial refresh did not preserve previous freshness age: %q", nameLine)
+	}
+	if strings.Contains(nameLine, "updated now") {
+		t.Fatalf("partial refresh showed updated now before details completed: %q", nameLine)
+	}
+
+	model, _ = model.Update(ForecastDetailsLoadedMsg{
+		SpotID:  "honolua",
+		Details: surf.ForecastDetails{SpotID: "honolua"},
+	})
+	if model.spotRefreshing("honolua") {
+		t.Fatal("spinner remained after all spot requests completed")
+	}
+	nameLine = ansi.Strip(model.spotNameLine("Honolua Bay", 80, model.forecasts["honolua"], false))
+	if !strings.HasSuffix(nameLine, "updated now ") {
+		t.Fatalf("completed refresh freshness = %q, want updated now", nameLine)
+	}
+	if strings.Contains(nameLine, ansi.Strip(model.refreshSpinner.View())+" ") {
+		t.Fatalf("completed refresh still showed spinner: %q", nameLine)
+	}
+}
+
 func TestFailedRefreshKeepsCachedForecastAndShowsAge(t *testing.T) {
 	t.Parallel()
 

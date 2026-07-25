@@ -33,6 +33,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 		m.clampForecastDayOffset()
 		m.applySort()
+		m.finishSpotRefresh(msg.SpotID)
 	case ForecastDetailsLoadedMsg:
 		state, tracked := m.details[msg.SpotID]
 		if !tracked {
@@ -52,6 +53,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				m.applySort()
 			}
 		}
+		m.finishSpotRefresh(msg.SpotID)
 	case spinner.TickMsg:
 		if !m.hasActiveRefreshes() {
 			return m, nil
