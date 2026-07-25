@@ -80,6 +80,34 @@ func TestInitFetchesFavoriteForecast(t *testing.T) {
 	if len(provider.spotIDs) != 1 || provider.spotIDs[0] != "honolua" {
 		t.Fatalf("provider calls = %v", provider.spotIDs)
 	}
+	if len(provider.detailSpotIDs) != 0 {
+		t.Fatalf("startup unexpectedly prefetched details for %v", provider.detailSpotIDs)
+	}
+}
+
+func TestInitLimitsConcurrentUncachedForecasts(t *testing.T) {
+	t.Parallel()
+
+	spots := []surf.Spot{
+		{ID: "first"}, {ID: "second"}, {ID: "third"}, {ID: "fourth"}, {ID: "fifth"},
+	}
+	model := New(&fakeForecastProvider{}, nil, spots, nil)
+	if active, queued := forecastWorkCounts(model); active != 2 || queued != 3 {
+		t.Fatalf("initial work = %d active, %d queued; want 2 active, 3 queued", active, queued)
+	}
+	messages := commandMessages(t, model.Init())
+	forecasts := 0
+	for _, message := range messages {
+		switch message.(type) {
+		case ForecastLoadedMsg:
+			forecasts++
+		case ForecastDetailsLoadedMsg:
+			t.Fatal("uncached startup unexpectedly fetched details")
+		}
+	}
+	if forecasts != 2 {
+		t.Fatalf("initial forecast commands = %d, want 2", forecasts)
+	}
 }
 
 func TestForecastResultUpdatesOnlyTrackedSpot(t *testing.T) {
@@ -128,38 +156,28 @@ func TestCachedForecastsDoNotStartInitialRefreshes(t *testing.T) {
 	}
 }
 
-func TestInitialFetchProgressCountsLocationsAndForecasts(t *testing.T) {
+func TestInitialFetchProgressCountsDashboardForecasts(t *testing.T) {
 	t.Parallel()
 
 	spots := []surf.Spot{{ID: "first"}, {ID: "second"}}
 	model := New(&fakeForecastProvider{}, nil, spots, nil)
 
-	if locations, forecasts := model.InitialFetchProgress(); locations != 0 || forecasts != 0 {
-		t.Fatalf("initial fetch progress = locations %d, forecasts %d; want 0 and 0", locations, forecasts)
+	if loaded := model.InitialFetchProgress(); loaded != 0 {
+		t.Fatalf("initial fetch progress = %d, want 0", loaded)
 	}
 
 	model, _ = model.Update(ForecastLoadedMsg{SpotID: "first"})
-	if locations, forecasts := model.InitialFetchProgress(); locations != 1 || forecasts != 0 {
-		t.Fatalf("progress after one location = locations %d, forecasts %d; want 1 and 0", locations, forecasts)
+	if loaded := model.InitialFetchProgress(); loaded != 1 {
+		t.Fatalf("progress after one forecast = %d, want 1", loaded)
 	}
 
 	model, _ = model.Update(ForecastLoadedMsg{SpotID: "second"})
-	if locations, forecasts := model.InitialFetchProgress(); locations != 2 || forecasts != 0 {
-		t.Fatalf("progress after all locations = locations %d, forecasts %d; want 2 and 0", locations, forecasts)
-	}
-
-	model, _ = model.Update(ForecastDetailsLoadedMsg{SpotID: "first"})
-	if locations, forecasts := model.InitialFetchProgress(); locations != 2 || forecasts != 1 {
-		t.Fatalf("progress after one forecast = locations %d, forecasts %d; want 2 and 1", locations, forecasts)
-	}
-
-	model, _ = model.Update(ForecastDetailsLoadedMsg{SpotID: "second"})
-	if locations, forecasts := model.InitialFetchProgress(); locations != 2 || forecasts != 2 {
-		t.Fatalf("completed fetch progress = locations %d, forecasts %d; want 2 and 2", locations, forecasts)
+	if loaded := model.InitialFetchProgress(); loaded != 2 {
+		t.Fatalf("completed fetch progress = %d, want 2", loaded)
 	}
 }
 
-func TestRRefreshesAllCachedForecastDataWithoutClearingFallback(t *testing.T) {
+func TestRImmediatelyRefreshesOnlyDashboardForecasts(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, time.July, 23, 12, 0, 0, 0, time.UTC)
@@ -188,12 +206,8 @@ func TestRRefreshesAllCachedForecastDataWithoutClearingFallback(t *testing.T) {
 	model.now = func() time.Time { return now }
 	model.selectedIndex = 1
 	model, cmd := model.Update(dashboardKey('r'))
-	if cmd != nil || !model.confirmRefresh {
-		t.Fatal("r did not open refresh confirmation without starting requests")
-	}
-	model, cmd = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if cmd == nil || model.confirmRefresh {
-		t.Fatal("enter did not close confirmation and start refresh")
+	if cmd == nil {
+		t.Fatal("r did not immediately start the dashboard refresh")
 	}
 	if model.selectedIndex != 1 {
 		t.Fatalf("refresh changed selection to %d, want 1", model.selectedIndex)
@@ -204,8 +218,8 @@ func TestRRefreshesAllCachedForecastDataWithoutClearingFallback(t *testing.T) {
 		if !forecast.loading || forecast.err != nil || forecast.forecast.Slots[0].Rating != "Cached "+spot.Name {
 			t.Fatalf("refresh cleared cached forecast for %s: %+v", spot.ID, forecast)
 		}
-		if !details.loading || details.err != nil || details.details.Units.WindSpeed != "cached" {
-			t.Fatalf("refresh cleared cached details for %s: %+v", spot.ID, details)
+		if details.loading || details.err != nil || details.details.Units.WindSpeed != "cached" {
+			t.Fatalf("dashboard refresh changed cached details for %s: %+v", spot.ID, details)
 		}
 		nameLine := ansi.Strip(model.spotNameLine(spot.Name, 80, forecast, true))
 		if !strings.Contains(nameLine, ansi.Strip(model.refreshSpinner.View())+" updated 2h ago") {
@@ -213,30 +227,28 @@ func TestRRefreshesAllCachedForecastDataWithoutClearingFallback(t *testing.T) {
 		}
 	}
 	model, duplicate := model.Update(dashboardKey('r'))
-	if duplicate != nil || !model.confirmRefresh {
-		t.Fatal("r did not reopen confirmation while refresh was in flight")
-	}
-	model, duplicate = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if duplicate != nil || model.confirmRefresh {
-		t.Fatal("confirming an in-flight refresh started duplicate requests")
+	if duplicate != nil {
+		t.Fatal("in-flight refresh started duplicate requests")
 	}
 
 	messages := commandMessages(t, cmd)
-	refreshMessages := make([]tea.Msg, 0, len(spots)*2)
+	refreshMessages := make([]tea.Msg, 0, len(spots))
 	var spinnerMessage spinner.TickMsg
 	for _, message := range messages {
 		switch message := message.(type) {
-		case ForecastLoadedMsg, ForecastDetailsLoadedMsg:
+		case ForecastLoadedMsg:
 			refreshMessages = append(refreshMessages, message)
+		case ForecastDetailsLoadedMsg:
+			t.Fatal("dashboard refresh unexpectedly fetched forecast details")
 		case spinner.TickMsg:
 			spinnerMessage = message
 		}
 	}
-	if len(refreshMessages) != len(spots)*2 {
-		t.Fatalf("refresh messages = %d, want %d", len(refreshMessages), len(spots)*2)
+	if len(refreshMessages) != len(spots) {
+		t.Fatalf("refresh messages = %d, want %d", len(refreshMessages), len(spots))
 	}
 	if spinnerMessage.ID == 0 {
-		t.Fatal("confirmed refresh did not start spinner animation")
+		t.Fatal("refresh did not start spinner animation")
 	}
 	model, nextSpinnerTick := model.Update(spinnerMessage)
 	if nextSpinnerTick == nil {
@@ -245,8 +257,8 @@ func TestRRefreshesAllCachedForecastDataWithoutClearingFallback(t *testing.T) {
 	if got := strings.Join(provider.spotIDs, ","); got != "first,second" {
 		t.Fatalf("forecast refresh spot IDs = %q, want first,second", got)
 	}
-	if got := strings.Join(provider.detailSpotIDs, ","); got != "first,second" {
-		t.Fatalf("details refresh spot IDs = %q, want first,second", got)
+	if len(provider.detailSpotIDs) != 0 {
+		t.Fatalf("dashboard refresh fetched details for %v", provider.detailSpotIDs)
 	}
 	for _, message := range refreshMessages {
 		model, _ = model.Update(message)
@@ -260,8 +272,8 @@ func TestRRefreshesAllCachedForecastDataWithoutClearingFallback(t *testing.T) {
 		if forecast.loading || forecast.err != nil || forecast.forecast.Slots[0].Rating != "Fresh" || forecast.updatedAt != now {
 			t.Fatalf("refreshed forecast for %s = %+v", spot.ID, forecast)
 		}
-		if details.loading || details.err != nil || details.details.Units.WindSpeed != "KTS" || details.updatedAt != now {
-			t.Fatalf("refreshed details for %s = %+v", spot.ID, details)
+		if details.loading || details.err != nil || details.details.Units.WindSpeed != "cached" || details.updatedAt != updatedAt {
+			t.Fatalf("dashboard refresh changed details for %s: %+v", spot.ID, details)
 		}
 		nameLine := ansi.Strip(model.spotNameLine(spot.Name, 80, forecast, model.spotFetching(spot.ID)))
 		if strings.Contains(nameLine, ansi.Strip(model.refreshSpinner.View())+" ") {
@@ -270,44 +282,67 @@ func TestRRefreshesAllCachedForecastDataWithoutClearingFallback(t *testing.T) {
 	}
 }
 
-func TestManualRefreshSpinnerIgnoresFinishingInitialRequests(t *testing.T) {
+func TestManualRefreshLimitsConcurrentLocations(t *testing.T) {
 	t.Parallel()
 
-	model := New(
-		&fakeForecastProvider{},
-		nil,
-		[]surf.Spot{{ID: "honolua", Name: "Honolua Bay"}},
-		nil,
-	)
-	model, _ = model.Update(ForecastLoadedMsg{
-		SpotID:   "honolua",
-		Forecast: surf.Forecast{SpotID: "honolua"},
-	})
+	spots := []surf.Spot{
+		{ID: "first"}, {ID: "second"}, {ID: "third"}, {ID: "fourth"}, {ID: "fifth"},
+	}
+	cache := &fakeForecastCache{entries: map[string]surf.ForecastCacheEntry{}}
+	for _, spot := range spots {
+		cache.entries[spot.ID] = surf.ForecastCacheEntry{
+			SpotID:            spot.ID,
+			Forecast:          surf.Forecast{SpotID: spot.ID, Slots: []surf.ForecastSlot{{Rating: "Fair"}}},
+			ForecastUpdatedAt: time.Now(),
+		}
+	}
+	provider := &fakeForecastProvider{forecast: surf.Forecast{Slots: []surf.ForecastSlot{{Rating: "Good"}}}}
+	model := New(provider, cache, spots, nil)
 
-	model, _ = model.Update(dashboardKey('r'))
-	model, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if cmd == nil || !model.forecasts["honolua"].loading || !model.details["honolua"].loading {
-		t.Fatal("manual refresh did not preserve both active startup and refresh requests")
+	model, cmd := model.Update(dashboardKey('r'))
+	if cmd == nil {
+		t.Fatal("refresh did not start")
+	}
+	if active, queued := forecastWorkCounts(model); active != 2 || queued != 3 {
+		t.Fatalf("initial refresh work = %d active, %d queued; want 2 active, 3 queued", active, queued)
 	}
 
-	model, _ = model.Update(ForecastDetailsLoadedMsg{
-		SpotID:  "honolua",
-		Details: surf.ForecastDetails{SpotID: "honolua"},
-	})
-	if !model.spotFetching("honolua") {
-		t.Fatal("finishing an initial details request stopped the manual refresh spinner")
+	messages := commandMessages(t, cmd)
+	var firstResult ForecastLoadedMsg
+	for _, message := range messages {
+		if result, ok := message.(ForecastLoadedMsg); ok {
+			firstResult = result
+			break
+		}
 	}
-
-	model, _ = model.Update(ForecastLoadedMsg{
-		SpotID:   "honolua",
-		Forecast: surf.Forecast{SpotID: "honolua"},
-	})
-	if model.spotFetching("honolua") {
-		t.Fatal("spinner remained active after the manual forecast request finished")
+	if firstResult.SpotID == "" {
+		t.Fatal("initial refresh commands returned no forecast")
+	}
+	model, next := model.Update(firstResult)
+	if next == nil {
+		t.Fatal("finishing one location did not start the next queued location")
+	}
+	if active, queued := forecastWorkCounts(model); active != 2 || queued != 2 {
+		t.Fatalf("continued refresh work = %d active, %d queued; want 2 active, 2 queued", active, queued)
+	}
+	if nextMessages := commandMessages(t, next); len(nextMessages) != 1 {
+		t.Fatalf("next queue step produced %d messages, want 1", len(nextMessages))
 	}
 }
 
-func TestRefreshKeepsPreviousAgeUntilAllSpotRequestsFinish(t *testing.T) {
+func forecastWorkCounts(model Model) (active, queued int) {
+	for _, state := range model.forecasts {
+		if state.loading {
+			active++
+		}
+		if state.queued {
+			queued++
+		}
+	}
+	return active, queued
+}
+
+func TestRefreshKeepsPreviousAgeUntilSummaryFinishes(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, time.July, 24, 12, 0, 0, 0, time.UTC)
@@ -328,15 +363,9 @@ func TestRefreshKeepsPreviousAgeUntilAllSpotRequestsFinish(t *testing.T) {
 		nil,
 	)
 	model.now = func() time.Time { return now }
-	model, _ = model.Update(dashboardKey('r'))
-	model, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-
-	model, _ = model.Update(ForecastLoadedMsg{
-		SpotID:   "honolua",
-		Forecast: surf.Forecast{SpotID: "honolua", Slots: []surf.ForecastSlot{{Rating: "Good"}}},
-	})
-	if !model.spotFetching("honolua") {
-		t.Fatal("summary completion stopped spinner before details completed")
+	model, cmd := model.Update(dashboardKey('r'))
+	if cmd == nil || !model.spotFetching("honolua") {
+		t.Fatal("refresh did not immediately start the summary request")
 	}
 	nameLine := ansi.Strip(model.spotNameLine(
 		"Honolua Bay",
@@ -345,18 +374,15 @@ func TestRefreshKeepsPreviousAgeUntilAllSpotRequestsFinish(t *testing.T) {
 		model.spotFetching("honolua"),
 	))
 	if !strings.Contains(nameLine, ansi.Strip(model.refreshSpinner.View())+" updated 2h ago") {
-		t.Fatalf("partial refresh did not preserve previous freshness age: %q", nameLine)
-	}
-	if strings.Contains(nameLine, "updated now") {
-		t.Fatalf("partial refresh showed updated now before details completed: %q", nameLine)
+		t.Fatalf("active refresh did not preserve previous freshness age: %q", nameLine)
 	}
 
-	model, _ = model.Update(ForecastDetailsLoadedMsg{
-		SpotID:  "honolua",
-		Details: surf.ForecastDetails{SpotID: "honolua"},
+	model, _ = model.Update(ForecastLoadedMsg{
+		SpotID:   "honolua",
+		Forecast: surf.Forecast{SpotID: "honolua", Slots: []surf.ForecastSlot{{Rating: "Good"}}},
 	})
 	if model.spotFetching("honolua") {
-		t.Fatal("spinner remained after all spot requests completed")
+		t.Fatal("spinner remained after the summary request completed")
 	}
 	nameLine = ansi.Strip(model.spotNameLine("Honolua Bay", 80, model.forecasts["honolua"], false))
 	if !strings.HasSuffix(nameLine, "updated now ") {
@@ -441,14 +467,9 @@ func TestManualRefreshFailureShowsRedDotUntilSuccessfulRefresh(t *testing.T) {
 	model.now = func() time.Time { return now }
 
 	model, _ = model.Update(dashboardKey('r'))
-	model, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model, _ = model.Update(ForecastLoadedMsg{
-		SpotID:   "honolua",
-		Forecast: surf.Forecast{SpotID: "honolua", Slots: []surf.ForecastSlot{{Timestamp: now, Rating: "Good"}}},
-	})
-	model, _ = model.Update(ForecastDetailsLoadedMsg{
 		SpotID: "honolua",
-		Err:    errors.New("Surfline wind forecast returned 403"),
+		Err:    errors.New("Surfline wave forecast returned 403"),
 	})
 
 	state := model.forecasts["honolua"]
@@ -456,22 +477,17 @@ func TestManualRefreshFailureShowsRedDotUntilSuccessfulRefresh(t *testing.T) {
 		t.Fatalf("completed failed refresh state = %+v", state)
 	}
 	nameLine := model.spotNameLine("Honolua Bay", 80, state, false)
-	if !strings.Contains(ansi.Strip(nameLine), "● updated 1m ago") {
-		t.Fatalf("failed refresh does not show a dot left of its age: %q", ansi.Strip(nameLine))
+	if !strings.Contains(ansi.Strip(nameLine), "● couldn’t update · 2h old") {
+		t.Fatalf("failed refresh does not explain the failure and cached age: %q", ansi.Strip(nameLine))
 	}
 	if !strings.Contains(nameLine, "\x1b[31;1m●") {
 		t.Fatalf("failed refresh dot does not use the error color: %q", nameLine)
 	}
 
 	model, _ = model.Update(dashboardKey('r'))
-	model, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model, _ = model.Update(ForecastLoadedMsg{
 		SpotID:   "honolua",
 		Forecast: surf.Forecast{SpotID: "honolua", Slots: []surf.ForecastSlot{{Timestamp: now, Rating: "Good"}}},
-	})
-	model, _ = model.Update(ForecastDetailsLoadedMsg{
-		SpotID:  "honolua",
-		Details: surf.ForecastDetails{SpotID: "honolua"},
 	})
 
 	state = model.forecasts["honolua"]
@@ -1034,6 +1050,10 @@ func TestDashboardHelpShowsOnlyAvailableActions(t *testing.T) {
 	t.Parallel()
 
 	model := New(&fakeForecastProvider{}, nil, []surf.Spot{{ID: "honolua", Name: "Honolua Bay"}}, nil)
+	model, _ = model.Update(ForecastLoadedMsg{
+		SpotID:   "honolua",
+		Forecast: surf.Forecast{SpotID: "honolua"},
+	})
 	model, _ = model.Update(tea.WindowSizeMsg{Width: 80, Height: 20})
 	plain := ansi.Strip(model.View())
 	for _, want := range []string{"←/→/h/l day", "↑/↓/j/k", "s sort", "r refresh", "/ search", "q quit"} {
@@ -1392,52 +1412,6 @@ func TestRemoveConfirmationCanBeCancelled(t *testing.T) {
 	}
 	if len(remover.spotIDs) != 0 {
 		t.Fatalf("cancel called remover with %v", remover.spotIDs)
-	}
-}
-
-func TestRefreshConfirmationCanBeCancelled(t *testing.T) {
-	t.Parallel()
-
-	provider := &fakeForecastProvider{}
-	model := New(provider, nil, []surf.Spot{{ID: "honolua", Name: "Honolua Bay"}}, nil)
-	model, _ = model.Update(ForecastLoadedMsg{SpotID: "honolua", Forecast: surf.Forecast{SpotID: "honolua"}})
-	model, _ = model.Update(ForecastDetailsLoadedMsg{SpotID: "honolua", Details: surf.ForecastDetails{SpotID: "honolua"}})
-	model.selectedIndex = 0
-	model, _ = model.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
-
-	model, cmd := model.Update(dashboardKey('r'))
-	if cmd != nil || !model.confirmRefresh {
-		t.Fatal("r did not open refresh confirmation without starting requests")
-	}
-	plain := ansi.Strip(model.View())
-	for _, want := range []string{"Refresh all forecast data?", "enter refresh", "esc cancel"} {
-		if !strings.Contains(plain, want) {
-			t.Fatalf("refresh confirmation does not contain %q:\n%s", want, plain)
-		}
-	}
-	if !strings.Contains(model.refreshDialog(), ui.SuccessStyle.Render("refresh")) {
-		t.Fatal("refresh action does not use the success style")
-	}
-	if !strings.Contains(model.refreshDialog(), ui.ErrorStyle.Render("cancel")) {
-		t.Fatal("refresh cancel action does not use the error style")
-	}
-	assertDialogTextCentered(t, model.refreshDialog(), "Refresh all forecast data?")
-	assertDialogTextCentered(t, model.refreshDialog(), "enter refresh • esc cancel")
-	assertConfirmationDialogCentered(t, model, model.refreshDialog())
-
-	model, _ = model.Update(dashboardKey('j'))
-	if model.selectedIndex != 0 {
-		t.Fatalf("selection moved while refresh confirmation was open: %d", model.selectedIndex)
-	}
-	model, cmd = model.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
-	if cmd != nil || model.confirmRefresh {
-		t.Fatal("esc did not cancel refresh confirmation")
-	}
-	if model.selectedIndex != 0 {
-		t.Fatalf("refresh cancellation changed selection to %d", model.selectedIndex)
-	}
-	if len(provider.spotIDs) != 0 || len(provider.detailSpotIDs) != 0 {
-		t.Fatalf("cancel started refresh requests: forecasts=%v details=%v", provider.spotIDs, provider.detailSpotIDs)
 	}
 }
 

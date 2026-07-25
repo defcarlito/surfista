@@ -11,13 +11,17 @@ import (
 	"surfista/internal/surf"
 )
 
-const forecastTimeout = 20 * time.Second
+const (
+	forecastTimeout        = 20 * time.Second
+	maxConcurrentForecasts = 2
+)
 
 type forecastState struct {
 	forecast        surf.Forecast
 	updatedAt       time.Time
 	fetchDisplayAt  time.Time
 	fetchDisplaySet bool
+	queued          bool
 	loading         bool
 	fetched         bool
 	manualRefresh   bool
@@ -29,6 +33,7 @@ type forecastDetailsState struct {
 	details   surf.ForecastDetails
 	updatedAt time.Time
 	loading   bool
+	fetched   bool
 	err       error
 }
 
@@ -66,7 +71,6 @@ type Model struct {
 	selectedIndex     int
 	scrollOffset      int
 	confirmRemoval    bool
-	confirmRefresh    bool
 	removing          bool
 	removalSpot       surf.Spot
 	removalErr        error
@@ -80,6 +84,7 @@ type Model struct {
 	nextAddedOrder    int
 	now               func() time.Time
 	refreshSpinner    spinner.Model
+	forecastQueue     []string
 }
 
 func New(provider surf.ForecastProvider, remover Remover, spots []surf.Spot, loadErr error) Model {
@@ -93,20 +98,20 @@ func New(provider surf.ForecastProvider, remover Remover, spots []surf.Spot, loa
 	}
 	states := make(map[string]forecastState, len(spots))
 	detailStates := make(map[string]forecastDetailsState, len(spots))
+	initialForecasts := make([]string, 0, len(spots))
 	for _, spot := range spots {
 		entry, hasCache := cached[spot.ID]
 		hasCache = hasCache && (!entry.ForecastUpdatedAt.IsZero() || len(entry.Forecast.Slots) > 0)
-		forecastLoading := !hasCache && provider != nil
-		detailsLoading := !hasCache && detailsProvider != nil
 		states[spot.ID] = forecastState{
 			forecast:  entry.Forecast,
 			updatedAt: entry.ForecastUpdatedAt,
-			loading:   forecastLoading,
 		}
 		detailStates[spot.ID] = forecastDetailsState{
 			details:   entry.Details,
 			updatedAt: entry.DetailsUpdatedAt,
-			loading:   detailsLoading,
+		}
+		if !hasCache && provider != nil {
+			initialForecasts = append(initialForecasts, spot.ID)
 		}
 	}
 	addedOrder := make(map[string]int, len(spots))
@@ -145,16 +150,22 @@ func New(provider surf.ForecastProvider, remover Remover, spots []surf.Spot, loa
 			spinner.WithSpinner(spinner.MiniDot),
 		),
 	}
+	for index, spotID := range initialForecasts {
+		state := model.forecasts[spotID]
+		if index < maxConcurrentForecasts {
+			state.loading = true
+		} else {
+			state.queued = true
+			model.forecastQueue = append(model.forecastQueue, spotID)
+		}
+		model.forecasts[spotID] = state
+	}
 	model.applySort()
 	return model
 }
 
 func (m Model) ConfirmingRemoval() bool {
 	return m.confirmRemoval
-}
-
-func (m Model) ConfirmingRefresh() bool {
-	return m.confirmRefresh
 }
 
 func (m Model) ShowingDetails() bool {
@@ -195,11 +206,17 @@ func (m *Model) removeSpot(spotID string) {
 	delete(m.forecasts, spotID)
 	delete(m.details, spotID)
 	delete(m.addedOrder, spotID)
+	queued := m.forecastQueue[:0]
+	for _, queuedSpotID := range m.forecastQueue {
+		if queuedSpotID != spotID {
+			queued = append(queued, queuedSpotID)
+		}
+	}
+	m.forecastQueue = queued
 	m.clampForecastDayOffset()
 	m.clampScrollOffset()
 	m.selectedIndex = -1
 	m.confirmRemoval = false
-	m.confirmRefresh = false
 	m.removing = false
 	m.removalSpot = surf.Spot{}
 	m.removalErr = nil
@@ -224,60 +241,33 @@ func (m Model) Init() tea.Cmd {
 }
 
 func (m Model) canRefresh() bool {
-	return len(m.spots) > 0 && (m.provider != nil || m.detailsProvider != nil)
+	return len(m.spots) > 0 && m.provider != nil && !m.hasPendingForecasts()
 }
 
 func (m *Model) refresh() tea.Cmd {
-	commands := make([]tea.Cmd, 0, len(m.spots)*2)
-	for _, spot := range m.spots {
-		wasFetching := m.spotFetching(spot.ID)
-		previousUpdatedAt := m.forecasts[spot.ID].updatedAt
-		started := false
-		if m.provider != nil {
-			state := m.forecasts[spot.ID]
-			if !state.loading {
-				state.loading = true
-				state.err = nil
-				m.forecasts[spot.ID] = state
-				commands = append(commands, m.fetchForecast(spot.ID))
-				started = true
-			}
-		}
-		if m.detailsProvider != nil {
-			state := m.details[spot.ID]
-			if !state.loading {
-				state.loading = true
-				state.err = nil
-				m.details[spot.ID] = state
-				commands = append(commands, m.fetchForecastDetails(spot.ID))
-				started = true
-			}
-		}
-		if started && !wasFetching {
-			state := m.forecasts[spot.ID]
-			state.fetchDisplayAt = previousUpdatedAt
-			state.fetchDisplaySet = true
-			state.refreshFailed = false
-			state.manualRefresh = true
-			m.forecasts[spot.ID] = state
-		} else if started {
-			state := m.forecasts[spot.ID]
-			if !state.manualRefresh {
-				state.refreshFailed = false
-			}
-			state.manualRefresh = true
-			m.forecasts[spot.ID] = state
-		}
-	}
-	if len(commands) == 0 {
+	if !m.canRefresh() {
 		return nil
 	}
+	m.forecastQueue = m.forecastQueue[:0]
+	for _, spot := range m.spots {
+		state := m.forecasts[spot.ID]
+		state.fetchDisplayAt = state.updatedAt
+		state.fetchDisplaySet = true
+		state.queued = true
+		state.loading = false
+		state.err = nil
+		state.refreshFailed = false
+		state.manualRefresh = true
+		m.forecasts[spot.ID] = state
+		m.forecastQueue = append(m.forecastQueue, spot.ID)
+	}
+	commands := m.dequeueQueuedForecasts()
 	commands = append(commands, m.refreshSpinner.Tick)
 	return tea.Batch(commands...)
 }
 
 func (m Model) spotFetching(spotID string) bool {
-	return m.forecasts[spotID].loading || m.details[spotID].loading
+	return m.forecasts[spotID].loading
 }
 
 func (m Model) hasActiveFetches() bool {
@@ -287,6 +277,53 @@ func (m Model) hasActiveFetches() bool {
 		}
 	}
 	return false
+}
+
+func (m Model) hasActiveAnimations() bool {
+	if m.hasActiveFetches() {
+		return true
+	}
+	for _, state := range m.details {
+		if state.loading {
+			return true
+		}
+	}
+	return false
+}
+
+func (m Model) hasPendingForecasts() bool {
+	for _, state := range m.forecasts {
+		if state.loading || state.queued {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *Model) startQueuedForecasts() tea.Cmd {
+	return tea.Batch(m.dequeueQueuedForecasts()...)
+}
+
+func (m *Model) dequeueQueuedForecasts() []tea.Cmd {
+	available := maxConcurrentForecasts
+	for _, state := range m.forecasts {
+		if state.loading {
+			available--
+		}
+	}
+
+	commands := make([]tea.Cmd, 0, max(0, available))
+	for available > 0 && len(m.forecastQueue) > 0 {
+		spotID := m.forecastQueue[0]
+		m.forecastQueue = m.forecastQueue[1:]
+		state := m.forecasts[spotID]
+		state.queued = false
+		state.loading = true
+		m.forecasts[spotID] = state
+		commands = append(commands, m.fetchForecast(spotID))
+		available--
+	}
+	return commands
 }
 
 // FetchSpinnerTick starts the dashboard's per-spot fetch animation when
@@ -318,32 +355,22 @@ func (m *Model) finishSpotFetch(spotID string) {
 func (m Model) PendingInitialFetches() int {
 	pending := 0
 	for _, state := range m.forecasts {
-		if state.loading {
-			pending++
-		}
-	}
-	for _, state := range m.details {
-		if state.loading {
+		if state.loading || state.queued {
 			pending++
 		}
 	}
 	return pending
 }
 
-// InitialFetchProgress reports resolved base forecasts and forecast details
-// separately so the loading screen can present them as distinct phases.
-func (m Model) InitialFetchProgress() (locationsLoaded, forecastsLoaded int) {
+// InitialFetchProgress reports how many startup summaries have resolved.
+func (m Model) InitialFetchProgress() int {
+	loaded := 0
 	for _, state := range m.forecasts {
-		if !state.loading {
-			locationsLoaded++
+		if !state.loading && !state.queued {
+			loaded++
 		}
 	}
-	for _, state := range m.details {
-		if !state.loading {
-			forecastsLoaded++
-		}
-	}
-	return locationsLoaded, forecastsLoaded
+	return loaded
 }
 
 // Add makes a newly tracked spot visible immediately and starts its forecast.
@@ -356,10 +383,13 @@ func (m *Model) Add(spot surf.Spot) tea.Cmd {
 	m.spots = append(m.spots, spot)
 	m.addedOrder[spot.ID] = m.nextAddedOrder
 	m.nextAddedOrder++
-	m.forecasts[spot.ID] = forecastState{loading: m.provider != nil}
-	m.details[spot.ID] = forecastDetailsState{loading: m.detailsProvider != nil}
+	m.forecasts[spot.ID] = forecastState{queued: m.provider != nil}
+	m.details[spot.ID] = forecastDetailsState{}
+	if m.provider != nil {
+		m.forecastQueue = append(m.forecastQueue, spot.ID)
+	}
 	m.applySort()
-	return tea.Batch(m.fetchForecast(spot.ID), m.fetchForecastDetails(spot.ID))
+	return m.startQueuedForecasts()
 }
 
 func (m Model) fetchForecast(spotID string) tea.Cmd {
@@ -411,15 +441,20 @@ func (m *Model) openSelectedDetails() tea.Cmd {
 	m.detailsSpot = spot
 	m.resetDetailsScroll()
 	state, cached := m.details[spot.ID]
-	if cached && (state.loading || (state.err == nil && state.usable())) {
+	if cached && state.loading {
 		return nil
 	}
 	if m.detailsProvider == nil {
-		m.details[spot.ID] = forecastDetailsState{err: errors.New("detailed forecast is unavailable")}
+		state.err = errors.New("detailed forecast is unavailable")
+		m.details[spot.ID] = state
 		return nil
 	}
+	startSpinner := !m.hasActiveAnimations()
 	state.loading = true
 	state.err = nil
 	m.details[spot.ID] = state
+	if startSpinner {
+		return tea.Batch(m.fetchForecastDetails(spot.ID), m.refreshSpinner.Tick)
+	}
 	return m.fetchForecastDetails(spot.ID)
 }

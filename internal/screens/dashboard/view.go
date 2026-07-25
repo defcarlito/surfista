@@ -54,9 +54,6 @@ func (m Model) View() string {
 	if m.confirmRemoval {
 		return m.confirmationOverlay(content, m.removalDialog())
 	}
-	if m.confirmRefresh {
-		return m.confirmationOverlay(content, m.refreshDialog())
-	}
 	if m.detailsOpen {
 		return m.detailsOverlay(content)
 	}
@@ -472,30 +469,6 @@ func (m Model) removalDialog() string {
 	return ui.DashboardRemovalDialogStyle.Width(width).Render(content)
 }
 
-func (m Model) refreshDialog() string {
-	width := confirmationDialogWidth
-	if m.terminalWidth > 0 {
-		width = max(1, min(width, m.terminalWidth-confirmationDialogFrame))
-	}
-	contentWidth := max(1, width-confirmationDialogFrame)
-
-	status := ui.DashboardRemovalHelpStyle.Render("enter ") +
-		ui.SuccessStyle.Render("refresh") +
-		ui.DashboardRemovalHelpStyle.Render(" • esc ") +
-		ui.ErrorStyle.Render("cancel")
-	status = lipgloss.NewStyle().Width(contentWidth).Align(lipgloss.Center).Render(status)
-	question := ui.DashboardRemovalBodyStyle.Render("Refresh all forecast data?")
-	question = lipgloss.NewStyle().Width(contentWidth).Align(lipgloss.Center).Render(question)
-
-	content := lipgloss.JoinVertical(
-		lipgloss.Center,
-		question,
-		"",
-		status,
-	)
-	return ui.DashboardRemovalDialogStyle.Width(width).Render(content)
-}
-
 func (m Model) contentWidth() int {
 	if m.terminalWidth <= 0 {
 		return maxDashboardWidth
@@ -562,9 +535,13 @@ func (m Model) spotNameLine(name string, width int, state forecastState, fetchin
 		return lipgloss.NewStyle().Width(width).MaxWidth(width).Align(lipgloss.Center).Render(styledName)
 	}
 
-	freshness := "updated " + formatForecastAge(m.now(), displayUpdatedAt)
+	age := formatForecastAge(m.now(), displayUpdatedAt)
+	freshness := "updated " + age
 	if state.fetched && !state.loading && state.err == nil && !state.refreshFailed && !fetching {
 		freshness = "updated now"
+	}
+	if state.refreshFailed && !fetching {
+		freshness = "couldn’t update · " + strings.TrimSuffix(age, " ago") + " old"
 	}
 	if fetching {
 		freshness = m.refreshSpinner.View() + " " + freshness

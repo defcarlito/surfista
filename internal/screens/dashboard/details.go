@@ -70,10 +70,7 @@ func (m Model) detailsDialog() string {
 	offset := min(max(0, m.detailsScroll), maxOffset)
 	end := min(len(rows), offset+visibleCount)
 
-	title := ansi.Truncate(m.detailsSpot.Name, contentWidth, "")
-	title = lipgloss.NewStyle().Width(contentWidth).Align(lipgloss.Center).Render(
-		ui.DashboardDetailTitleStyle.Render(title),
-	)
+	title := m.detailsTitleLine(contentWidth)
 	header := m.detailCategoryHeader(contentWidth, cellWidth)
 
 	topIndicator := ""
@@ -120,19 +117,61 @@ func (m Model) detailsStatus(width int) string {
 	}
 	actions = append(actions, "esc close")
 	status := ui.DashboardDetailHelpStyle.Render(strings.Join(actions, " • "))
-
-	state := m.details[m.detailsSpot.ID]
-	switch {
-	case state.loading && !state.usable():
-		status = ui.DashboardDetailHelpStyle.Render("loading forecast details… • " + strings.Join(actions, " • "))
-	case state.err != nil && state.usable():
-		status = ui.DashboardDetailHelpStyle.Render("using cached details • " + strings.Join(actions, " • "))
-	case state.err != nil:
-		status = ui.ErrorStyle.Render("details unavailable") +
-			ui.DashboardDetailHelpStyle.Render(" • "+strings.Join(actions, " • "))
-	}
 	status = ansi.Truncate(status, width, "")
 	return lipgloss.NewStyle().Width(width).Align(lipgloss.Center).Render(status)
+}
+
+func (m Model) detailsTitleLine(width int) string {
+	title := ui.DashboardDetailTitleStyle.Render(ansi.Truncate(m.detailsSpot.Name, width, ""))
+	freshness := m.detailsFreshness()
+	canvas := lipgloss.NewCanvas(width, 1)
+	line := canvas.Compose(lipgloss.NewCompositor(
+		lipgloss.NewLayer(title).X(max(0, (width-lipgloss.Width(title))/2)),
+		lipgloss.NewLayer(freshness).X(max(0, width-lipgloss.Width(freshness)-1)),
+	)).Render()
+	return lipgloss.NewStyle().Width(width).MaxWidth(width).Render(line)
+}
+
+func (m Model) detailsFreshness() string {
+	state := m.details[m.detailsSpot.ID]
+	label := ""
+	failed := false
+	switch {
+	case state.loading && !state.usable():
+		label = m.refreshSpinner.View() + " loading details…"
+	case state.loading:
+		freshness := formatForecastAge(m.now(), state.updatedAt)
+		if state.fetched {
+			freshness = "now"
+		}
+		label = m.refreshSpinner.View() + " updated " + freshness
+	case state.err != nil && state.usable():
+		failed = true
+		label = "couldn’t update · using cache"
+		if !state.updatedAt.IsZero() {
+			age := formatForecastAge(m.now(), state.updatedAt)
+			label = "couldn’t update · " + strings.TrimSuffix(age, " ago") + " old"
+		}
+	case state.err != nil:
+		failed = true
+		label = "details unavailable"
+	case state.usable():
+		label = "updated"
+		if !state.updatedAt.IsZero() {
+			label += " " + formatForecastAge(m.now(), state.updatedAt)
+		}
+		if state.fetched {
+			label = "updated now"
+		}
+	}
+	if label == "" {
+		return ""
+	}
+	styled := ui.DashboardSubtitleStyle.Render(label)
+	if failed {
+		styled = ui.ErrorStyle.Render("●") + " " + styled
+	}
+	return styled
 }
 
 func (m Model) detailCategoryHeader(contentWidth, cellWidth int) string {

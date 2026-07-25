@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -58,21 +59,32 @@ func TestEnterOpensCurrentForecastDetailsAndEscapeCloses(t *testing.T) {
 		}},
 	}}
 	model, _ = model.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
-	for _, message := range commandMessages(t, model.Init()) {
-		if _, ok := message.(ForecastDetailsLoadedMsg); ok {
-			model, _ = model.Update(message)
-		}
-	}
 	model, _ = model.Update(dashboardKey('j'))
 	dashboardFooterHeight := lipgloss.Height(model.dashboardFooter(model.contentWidth()))
 	dashboardSortHeight := lipgloss.Height(model.sortStatus(model.contentWidth()))
 
 	model, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if !model.ShowingDetails() || cmd != nil {
-		t.Fatalf("enter did not open prefetched details immediately: open=%v cmd=%v", model.ShowingDetails(), cmd)
+	if !model.ShowingDetails() || cmd == nil {
+		t.Fatalf("enter did not open details and start its fetch: open=%v cmd=%v", model.ShowingDetails(), cmd)
+	}
+	for _, message := range commandMessages(t, cmd) {
+		if _, ok := message.(ForecastDetailsLoadedMsg); ok {
+			model, _ = model.Update(message)
+		}
 	}
 	if !reflect.DeepEqual(provider.detailSpotIDs, []string{"honolua"}) {
 		t.Fatalf("detail provider calls = %v", provider.detailSpotIDs)
+	}
+	freshness := model.detailsFreshness()
+	if plain := ansi.Strip(freshness); plain != "updated now" {
+		t.Fatalf("successful detail freshness = %q", plain)
+	}
+	if !strings.Contains(freshness, ui.DashboardSubtitleStyle.Render("updated now")) {
+		t.Fatal("detail freshness does not use the dashboard update color")
+	}
+	titleLine := ansi.Strip(model.detailsTitleLine(100))
+	if position := strings.Index(titleLine, "updated now"); position < 80 {
+		t.Fatalf("detail freshness is not in the top-right title area: %q", titleLine)
 	}
 	detailsFooter := model.dashboardFooter(model.contentWidth())
 	if strings.TrimSpace(ansi.Strip(detailsFooter)) != "" {
@@ -368,29 +380,69 @@ func TestDetailsRowsScrollWithJKWithoutChangingSelection(t *testing.T) {
 	}
 }
 
-func TestForecastDetailsArePrefetchedAndOpenedFromCache(t *testing.T) {
+func TestForecastDetailsFetchOnDemandAndRefreshWhenReopened(t *testing.T) {
 	t.Parallel()
 
 	provider := &fakeForecastProvider{details: surf.ForecastDetails{SpotID: "honolua"}}
 	model := New(provider, nil, []surf.Spot{{ID: "honolua", Name: "Honolua Bay"}}, nil)
-	for _, message := range commandMessages(t, model.Init()) {
-		if _, ok := message.(ForecastDetailsLoadedMsg); ok {
-			model, _ = model.Update(message)
-		}
-	}
 	model, _ = model.Update(dashboardKey('j'))
 	model, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if cmd != nil || !model.ShowingDetails() {
-		t.Fatalf("prefetched open = open %v command %v, want open without command", model.ShowingDetails(), cmd)
+	if cmd == nil || !model.ShowingDetails() {
+		t.Fatalf("first open = open %v command %v, want on-demand fetch", model.ShowingDetails(), cmd)
+	}
+	for _, message := range commandMessages(t, cmd) {
+		model, _ = model.Update(message)
 	}
 	model, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
 
 	model, cmd = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if cmd != nil || !model.ShowingDetails() {
-		t.Fatalf("cached open = open %v command %v, want open without command", model.ShowingDetails(), cmd)
+	if cmd == nil || !model.ShowingDetails() {
+		t.Fatalf("cached open = open %v command %v, want background detail refresh", model.ShowingDetails(), cmd)
 	}
-	if !reflect.DeepEqual(provider.detailSpotIDs, []string{"honolua"}) {
-		t.Fatalf("prefetched details refetched: %v", provider.detailSpotIDs)
+	if status := ansi.Strip(model.detailsFreshness()); !strings.Contains(status, "updated now") {
+		t.Fatalf("cached detail refresh status = %q", status)
+	}
+	for _, message := range commandMessages(t, cmd) {
+		model, _ = model.Update(message)
+	}
+	if !reflect.DeepEqual(provider.detailSpotIDs, []string{"honolua", "honolua"}) {
+		t.Fatalf("detail provider calls = %v, want one per open", provider.detailSpotIDs)
+	}
+}
+
+func TestDetailRefreshFailureStaysInsideDetailsView(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.July, 24, 12, 0, 0, 0, time.UTC)
+	updatedAt := now.Add(-3 * time.Minute)
+	cache := &fakeForecastCache{entries: map[string]surf.ForecastCacheEntry{
+		"honolua": {
+			SpotID:            "honolua",
+			Forecast:          surf.Forecast{SpotID: "honolua", Slots: []surf.ForecastSlot{{Timestamp: now, Rating: "Fair"}}},
+			ForecastUpdatedAt: updatedAt,
+			Details:           surf.ForecastDetails{SpotID: "honolua", Slots: []surf.ForecastDetailSlot{{Timestamp: now}}},
+			DetailsUpdatedAt:  updatedAt,
+		},
+	}}
+	provider := &fakeForecastProvider{detailsErr: errors.New("details unavailable")}
+	model := New(provider, cache, []surf.Spot{{ID: "honolua", Name: "Honolua Bay"}}, nil)
+	model.now = func() time.Time { return now }
+	model, _ = model.Update(dashboardKey('j'))
+	model, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if status := ansi.Strip(model.detailsFreshness()); !strings.Contains(status, "updated 3m ago") {
+		t.Fatalf("active cached detail refresh status = %q", status)
+	}
+	for _, message := range commandMessages(t, cmd) {
+		model, _ = model.Update(message)
+	}
+
+	status := ansi.Strip(model.detailsFreshness())
+	if !strings.Contains(status, "● couldn’t update · 3m old") {
+		t.Fatalf("failed detail status = %q", status)
+	}
+	cardStatus := ansi.Strip(model.spotNameLine("Honolua Bay", 80, model.forecasts["honolua"], false))
+	if strings.Contains(cardStatus, "couldn’t update") || strings.Contains(cardStatus, "●") {
+		t.Fatalf("detail failure leaked onto dashboard card: %q", cardStatus)
 	}
 }
 

@@ -12,7 +12,6 @@ type Model struct {
 	Spinner spinner.Model
 
 	locations       int
-	locationsLoaded int
 	forecastsLoaded int
 	canSkip         bool
 	terminalWidth   int
@@ -38,8 +37,7 @@ func (m Model) Init() tea.Cmd {
 	return m.Spinner.Tick
 }
 
-func (m *Model) SetProgress(locationsLoaded, forecastsLoaded int) {
-	m.locationsLoaded = max(0, min(locationsLoaded, m.locations))
+func (m *Model) SetProgress(forecastsLoaded int) {
 	m.forecastsLoaded = max(0, min(forecastsLoaded, m.locations))
 }
 

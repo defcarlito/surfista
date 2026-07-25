@@ -43,18 +43,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	switch msg.(type) {
-	case dashboard.ForecastLoadedMsg, dashboard.ForecastDetailsLoadedMsg:
-		m.dashboard, _ = m.dashboard.Update(msg)
+	case dashboard.ForecastLoadedMsg:
+		var cmd tea.Cmd
+		m.dashboard, cmd = m.dashboard.Update(msg)
 		m.loading.SetCanSkip(m.dashboard.HasUsableForecasts())
 		if m.current == loadingScreen {
 			pending := m.dashboard.PendingInitialFetches()
-			locationsLoaded, forecastsLoaded := m.dashboard.InitialFetchProgress()
-			m.loading.SetProgress(locationsLoaded, forecastsLoaded)
+			m.loading.SetProgress(m.dashboard.InitialFetchProgress())
 			if pending == 0 {
 				m.current = homeScreen
 			}
 		}
-		return m, nil
+		return m, cmd
+	case dashboard.ForecastDetailsLoadedMsg:
+		var cmd tea.Cmd
+		m.dashboard, cmd = m.dashboard.Update(msg)
+		return m, cmd
 	}
 
 	if key, ok := msg.(tea.KeyPressMsg); ok {
@@ -64,7 +68,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		switch m.current {
 		case homeScreen:
-			if m.dashboard.ConfirmingRemoval() || m.dashboard.ConfirmingRefresh() || m.dashboard.ShowingDetails() {
+			if m.dashboard.ConfirmingRemoval() || m.dashboard.ShowingDetails() {
 				break
 			}
 			switch key.String() {

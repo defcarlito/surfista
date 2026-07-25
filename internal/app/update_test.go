@@ -86,7 +86,7 @@ func TestInitialForecastsKeepLoadingScreenUntilAllResolve(t *testing.T) {
 	}
 }
 
-func TestInitialLoadingWaitsForPrefetchedForecastDetails(t *testing.T) {
+func TestInitialLoadingOnlyWaitsForDashboardForecast(t *testing.T) {
 	t.Parallel()
 
 	model := New(
@@ -96,20 +96,14 @@ func TestInitialLoadingWaitsForPrefetchedForecastDetails(t *testing.T) {
 		[]surf.Spot{{ID: "honolua"}},
 		nil,
 	)
-	if model.current != loadingScreen || model.initialForecasts != 2 {
-		t.Fatalf("initial state = screen %v loads %d, want loading screen with 2 loads", model.current, model.initialForecasts)
+	if model.current != loadingScreen || model.initialForecasts != 1 {
+		t.Fatalf("initial state = screen %v loads %d, want loading screen with 1 summary", model.current, model.initialForecasts)
 	}
 
 	updatedModel, _ := model.Update(dashboard.ForecastLoadedMsg{SpotID: "honolua"})
 	updated := updatedModel.(Model)
-	if updated.current != loadingScreen {
-		t.Fatal("dashboard opened before detail prefetch completed")
-	}
-
-	updatedModel, _ = updated.Update(dashboard.ForecastDetailsLoadedMsg{SpotID: "honolua"})
-	updated = updatedModel.(Model)
 	if updated.current != homeScreen {
-		t.Fatal("dashboard did not open after forecast and detail prefetch completed")
+		t.Fatal("dashboard did not open after its summary completed")
 	}
 }
 
@@ -355,36 +349,6 @@ func TestRemovalConfirmationBlocksDashboardNavigation(t *testing.T) {
 	updated = updatedModel.(Model)
 	if updated.current != homeScreen || !updated.dashboard.ConfirmingRemoval() {
 		t.Fatal("quit shortcut escaped the removal confirmation")
-	}
-}
-
-func TestRefreshConfirmationBlocksDashboardNavigation(t *testing.T) {
-	t.Parallel()
-
-	model := New(
-		resizeTestSearcher{},
-		resizeTestTracker{},
-		&appTestForecastProvider{},
-		[]surf.Spot{{ID: "honolua", Name: "Honolua Bay"}},
-		nil,
-	)
-	updatedModel, _ := model.Update(dashboard.ForecastLoadedMsg{SpotID: "honolua"})
-	updated := updatedModel.(Model)
-	updatedModel, _ = updated.Update(tea.KeyPressMsg{Code: 'r', Text: "r"})
-	updated = updatedModel.(Model)
-	if !updated.dashboard.ConfirmingRefresh() {
-		t.Fatal("r did not open refresh confirmation")
-	}
-
-	updatedModel, _ = updated.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
-	updated = updatedModel.(Model)
-	if updated.current != homeScreen || !updated.dashboard.ConfirmingRefresh() {
-		t.Fatal("search shortcut escaped the refresh confirmation")
-	}
-	updatedModel, cmd := updated.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
-	updated = updatedModel.(Model)
-	if cmd != nil || updated.current != homeScreen || !updated.dashboard.ConfirmingRefresh() {
-		t.Fatal("quit shortcut escaped the refresh confirmation")
 	}
 }
 

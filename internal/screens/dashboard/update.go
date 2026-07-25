@@ -17,7 +17,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case ForecastLoadedMsg:
 		state, tracked := m.forecasts[msg.SpotID]
 		if !tracked {
-			return m, nil
+			return m, m.startQueuedForecasts()
 		}
 		state.loading = false
 		state.err = msg.Err
@@ -36,6 +36,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.clampForecastDayOffset()
 		m.applySort()
 		m.finishSpotFetch(msg.SpotID)
+		return m, m.startQueuedForecasts()
 	case ForecastDetailsLoadedMsg:
 		state, tracked := m.details[msg.SpotID]
 		if !tracked {
@@ -43,14 +44,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 		state.loading = false
 		state.err = msg.Err
-		forecastState := m.forecasts[msg.SpotID]
-		if msg.Err != nil && forecastState.manualRefresh {
-			forecastState.refreshFailed = true
-			m.forecasts[msg.SpotID] = forecastState
-		}
 		if msg.Err == nil {
 			state.details = msg.Details
 			state.updatedAt = m.now()
+			state.fetched = true
 		}
 		m.details[msg.SpotID] = state
 		if msg.Err == nil {
@@ -59,9 +56,8 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				m.applySort()
 			}
 		}
-		m.finishSpotFetch(msg.SpotID)
 	case spinner.TickMsg:
-		if !m.hasActiveFetches() {
+		if !m.hasActiveAnimations() {
 			return m, nil
 		}
 		var cmd tea.Cmd
@@ -92,16 +88,6 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 					m.removalSpot = surf.Spot{}
 					m.removalErr = nil
 				}
-			}
-			return m, nil
-		}
-		if m.confirmRefresh {
-			switch msg.String() {
-			case "enter":
-				m.confirmRefresh = false
-				return m, m.refresh()
-			case "esc":
-				m.confirmRefresh = false
 			}
 			return m, nil
 		}
@@ -168,9 +154,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		case "s":
 			return m, m.cycleSort()
 		case "r":
-			if m.canRefresh() {
-				m.confirmRefresh = true
-			}
+			return m, m.refresh()
 		case "u":
 			return m, m.openSelectedURLCmd()
 		case "x":
