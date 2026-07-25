@@ -27,9 +27,9 @@ const (
 var dashboardHours = [...]int{0, 3, 6, 9, 12, 15, 18, 21, 24}
 
 const (
-	dashboardBrowseHelp = "←/→/h/l day • ↑/↓/j/k • s sort • / search • q quit"
-	dashboardSelectHelp = "←/→/h/l day • ↑/↓/j/k • s sort • enter • x remove • esc • q quit"
-	dashboardURLHelp    = "←/→/h/l day • ↑/↓/j/k • s sort • enter • u open • x remove • esc • q quit"
+	dashboardBrowseHelp = "←/→/h/l day • ↑/↓/j/k • s sort • v view • / search • q quit"
+	dashboardSelectHelp = "←/→/h/l day • ↑/↓/j/k • s sort • v view • enter • x remove • esc • q quit"
+	dashboardURLHelp    = "←/→/h/l day • ↑/↓/j/k • s sort • v view • enter • u open • x remove • esc • q quit"
 )
 
 func (m Model) View() string {
@@ -76,7 +76,6 @@ func (m Model) dashboardFooter(width int) string {
 		selectHelp = strings.Replace(selectHelp, "s sort", "s sort • r refresh", 1)
 		urlHelp = strings.Replace(urlHelp, "s sort", "s sort • r refresh", 1)
 	}
-
 	helpText := browseHelp
 	if m.HasSelection() {
 		helpText = selectHelp
@@ -93,6 +92,9 @@ func (m Model) dashboardFooter(width int) string {
 		lipgloss.Height(ui.DashboardHelpStyle.Width(width).Render(selectHelp)),
 		lipgloss.Height(ui.DashboardHelpStyle.Width(width).Render(urlHelp)),
 	)
+	if m.terminalHeight > 0 && m.terminalHeight < spaciousLayoutMinHeight {
+		maxHelpHeight = lipgloss.Height(ui.DashboardHelpStyle.Width(width).Render(helpText))
+	}
 	help = fitHeight(help, maxHelpHeight)
 	return lipgloss.JoinVertical(lipgloss.Left, help, "")
 }
@@ -107,14 +109,19 @@ func (m Model) sortStatus(width int) string {
 			}
 			label += " " + ui.DashboardSubtitleStyle.Render(context)
 		}
-		return lipgloss.NewStyle().Width(width).Render(label)
+		return label
 	}
-	status := render(m.sortMode)
-	maxHeight := max(lipgloss.Height(render(SortTimeAdded)), lipgloss.Height(render(SortConditionHighToLow)))
+	sortLine := ansi.Truncate(render(m.sortMode), width, "")
+	viewLine := ui.DashboardSortStyle.Render("viewing: " + m.viewMode.label())
+	if m.viewMode == dashboardViewWind {
+		viewLine += " " + ui.DashboardSubtitleStyle.Render("("+m.dashboardWindUnit()+")")
+	}
+	viewLine = ansi.Truncate(viewLine, width, "")
+	status := lipgloss.JoinVertical(lipgloss.Left, sortLine, viewLine)
 	if m.detailsOpen {
 		status = ""
 	}
-	return fitHeight(status, maxHeight)
+	return fitHeight(lipgloss.NewStyle().Width(width).MaxWidth(width).Render(status), 2)
 }
 
 func (m Model) dashboardBody(width, height int) string {
@@ -499,17 +506,17 @@ func (m Model) spotCard(spot surf.Spot, slotWidth int, selected bool) string {
 	}
 
 	ratings := make([]string, 0, len(dashboardHours))
-	heights := make([]string, 0, len(dashboardHours))
+	metrics := make([]string, 0, len(dashboardHours))
 	for _, hour := range dashboardHours {
 		slot, ok := slots[hour]
 		if !ok {
 			ratings = append(ratings, tableCell("—", slotWidth))
-			heights = append(heights, tableCell("—", slotWidth))
+			metrics = append(metrics, tableCell("—", slotWidth))
 			continue
 		}
 		compact := compactRating(slot.Rating, slotWidth)
 		ratings = append(ratings, tableCell(ui.DashboardRating(compact, slot.Rating), slotWidth))
-		heights = append(heights, tableCell(compactHeight(slot.SurfHeight, slotWidth), slotWidth))
+		metrics = append(metrics, tableCell(m.dashboardMetricValue(spot.ID, slot, slotWidth), slotWidth))
 	}
 
 	return strings.Join([]string{
@@ -517,7 +524,7 @@ func (m Model) spotCard(spot surf.Spot, slotWidth int, selected bool) string {
 		borderedLine(name, selected),
 		segmentedBorder("├", "┬", "┤", slotWidth, selected),
 		segmentedLine(ratings, selected),
-		segmentedLine(heights, selected),
+		segmentedLine(metrics, selected),
 		segmentedBorder("╰", "┴", "╯", slotWidth, selected),
 	}, "\n")
 }

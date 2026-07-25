@@ -40,7 +40,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case ForecastDetailsLoadedMsg:
 		state, tracked := m.details[msg.SpotID]
 		if !tracked {
-			return m, nil
+			return m, m.startQueuedDetails()
 		}
 		state.loading = false
 		state.err = msg.Err
@@ -56,6 +56,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				m.applySort()
 			}
 		}
+		return m, m.startQueuedDetails()
 	case spinner.TickMsg:
 		if !m.hasActiveAnimations() {
 			return m, nil
@@ -153,6 +154,8 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m, m.openSelectedDetails()
 		case "s":
 			return m, m.cycleSort()
+		case "v":
+			return m, m.cycleDashboardView()
 		case "r":
 			return m, m.refresh()
 		case "u":

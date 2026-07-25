@@ -32,6 +32,7 @@ type forecastState struct {
 type forecastDetailsState struct {
 	details   surf.ForecastDetails
 	updatedAt time.Time
+	queued    bool
 	loading   bool
 	fetched   bool
 	err       error
@@ -85,6 +86,8 @@ type Model struct {
 	now               func() time.Time
 	refreshSpinner    spinner.Model
 	forecastQueue     []string
+	detailsQueue      []string
+	viewMode          dashboardViewMode
 }
 
 func New(provider surf.ForecastProvider, remover Remover, spots []surf.Spot, loadErr error) Model {
@@ -213,6 +216,13 @@ func (m *Model) removeSpot(spotID string) {
 		}
 	}
 	m.forecastQueue = queued
+	queuedDetails := m.detailsQueue[:0]
+	for _, queuedSpotID := range m.detailsQueue {
+		if queuedSpotID != spotID {
+			queuedDetails = append(queuedDetails, queuedSpotID)
+		}
+	}
+	m.detailsQueue = queuedDetails
 	m.clampForecastDayOffset()
 	m.clampScrollOffset()
 	m.selectedIndex = -1
@@ -289,6 +299,92 @@ func (m Model) hasActiveAnimations() bool {
 		}
 	}
 	return false
+}
+
+func (m *Model) startQueuedDetails() tea.Cmd {
+	return tea.Batch(m.dequeueQueuedDetails()...)
+}
+
+func (m *Model) dequeueQueuedDetails() []tea.Cmd {
+	available := maxConcurrentForecasts
+	for _, state := range m.details {
+		if state.loading {
+			available--
+		}
+	}
+
+	commands := make([]tea.Cmd, 0, max(0, available))
+	for available > 0 && len(m.detailsQueue) > 0 {
+		spotID := m.detailsQueue[0]
+		m.detailsQueue = m.detailsQueue[1:]
+		state, tracked := m.details[spotID]
+		if !tracked || !state.queued {
+			continue
+		}
+		state.queued = false
+		state.loading = true
+		m.details[spotID] = state
+		commands = append(commands, m.fetchForecastDetails(spotID))
+		available--
+	}
+	return commands
+}
+
+func (m *Model) queueMissingWindDetails() tea.Cmd {
+	if m.detailsProvider == nil {
+		return nil
+	}
+
+	startSpinner := !m.hasActiveAnimations()
+	for _, spot := range m.spots {
+		state := m.details[spot.ID]
+		if len(state.details.Slots) > 0 || state.loading || state.queued {
+			continue
+		}
+		state.queued = true
+		state.err = nil
+		m.details[spot.ID] = state
+		m.detailsQueue = append(m.detailsQueue, spot.ID)
+	}
+
+	commands := m.dequeueQueuedDetails()
+	if startSpinner && len(commands) > 0 {
+		commands = append(commands, m.refreshSpinner.Tick)
+	}
+	return tea.Batch(commands...)
+}
+
+func (m *Model) queueSelectedDetails(spotID string) tea.Cmd {
+	state := m.details[spotID]
+	if state.loading {
+		return nil
+	}
+	if m.detailsProvider == nil {
+		state.err = errors.New("detailed forecast is unavailable")
+		m.details[spotID] = state
+		return nil
+	}
+
+	startSpinner := !m.hasActiveAnimations()
+	if state.queued {
+		kept := m.detailsQueue[:0]
+		for _, queuedSpotID := range m.detailsQueue {
+			if queuedSpotID != spotID {
+				kept = append(kept, queuedSpotID)
+			}
+		}
+		m.detailsQueue = kept
+	}
+	state.queued = true
+	state.err = nil
+	m.details[spotID] = state
+	m.detailsQueue = append([]string{spotID}, m.detailsQueue...)
+
+	commands := m.dequeueQueuedDetails()
+	if startSpinner && len(commands) > 0 {
+		commands = append(commands, m.refreshSpinner.Tick)
+	}
+	return tea.Batch(commands...)
 }
 
 func (m Model) hasPendingForecasts() bool {
@@ -389,7 +485,11 @@ func (m *Model) Add(spot surf.Spot) tea.Cmd {
 		m.forecastQueue = append(m.forecastQueue, spot.ID)
 	}
 	m.applySort()
-	return m.startQueuedForecasts()
+	forecastCmd := m.startQueuedForecasts()
+	if m.viewMode == dashboardViewWind {
+		return tea.Batch(forecastCmd, m.queueMissingWindDetails())
+	}
+	return forecastCmd
 }
 
 func (m Model) fetchForecast(spotID string) tea.Cmd {
@@ -440,21 +540,5 @@ func (m *Model) openSelectedDetails() tea.Cmd {
 	m.detailsOpen = true
 	m.detailsSpot = spot
 	m.resetDetailsScroll()
-	state, cached := m.details[spot.ID]
-	if cached && state.loading {
-		return nil
-	}
-	if m.detailsProvider == nil {
-		state.err = errors.New("detailed forecast is unavailable")
-		m.details[spot.ID] = state
-		return nil
-	}
-	startSpinner := !m.hasActiveAnimations()
-	state.loading = true
-	state.err = nil
-	m.details[spot.ID] = state
-	if startSpinner {
-		return tea.Batch(m.fetchForecastDetails(spot.ID), m.refreshSpinner.Tick)
-	}
-	return m.fetchForecastDetails(spot.ID)
+	return m.queueSelectedDetails(spot.ID)
 }

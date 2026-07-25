@@ -136,10 +136,11 @@ func (m Model) detailsFreshness() string {
 	state := m.details[m.detailsSpot.ID]
 	label := ""
 	failed := false
+	loading := state.loading || state.queued
 	switch {
-	case state.loading && !state.usable():
+	case loading && !state.usable():
 		label = m.refreshSpinner.View() + " loading details…"
-	case state.loading:
+	case loading:
 		freshness := formatForecastAge(m.now(), state.updatedAt)
 		if state.fetched {
 			freshness = "now"
@@ -198,7 +199,7 @@ func detailCategoryTitles(cellWidth int) []string {
 
 func (m Model) detailForecastRow(row forecastDetailRow, contentWidth, cellWidth int, swellLayout swellColumnLayout) string {
 	detailsState := m.details[m.detailsSpot.ID]
-	detailsLoading := detailsState.loading && !detailsState.usable()
+	detailsLoading := (detailsState.loading || detailsState.queued) && !detailsState.usable()
 	cells := [][]string{
 		surfHeightRowLines(row.forecast, cellWidth),
 		swellRowLines(row.forecast, cellWidth, swellLayout),

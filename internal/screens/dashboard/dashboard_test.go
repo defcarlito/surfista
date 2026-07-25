@@ -9,6 +9,7 @@ import (
 
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	"surfista/internal/surf"
@@ -1123,8 +1124,10 @@ func TestLocationViewportScrollsWhileHeaderAndControlsStayPinned(t *testing.T) {
 	if !strings.Contains(lines[4], "sorting by: time added") || strings.Contains(lines[4], "s sort") {
 		t.Fatalf("sort status is not between the times and locations: %q", lines[4])
 	}
-	if !strings.Contains(lines[len(lines)-2], "↑/↓/j/k") || !strings.Contains(lines[len(lines)-2], "s sort") || strings.TrimSpace(lines[len(lines)-1]) != "" {
-		t.Fatalf("controls are not one row above the bottom: %q / %q", lines[len(lines)-2], lines[len(lines)-1])
+	controlsLine := lineContaining(lines, "↑/↓/j/k")
+	if controlsLine < len(lines)-3 || !strings.Contains(lines[controlsLine], "s sort") ||
+		!strings.Contains(lines[controlsLine], "v view") || strings.TrimSpace(lines[len(lines)-1]) != "" {
+		t.Fatalf("controls are not pinned at the bottom: line=%d\n%s", controlsLine, plain)
 	}
 	for _, want := range []string{"First Location", "Second Location"} {
 		if !strings.Contains(plain, want) {
@@ -1136,8 +1139,9 @@ func TestLocationViewportScrollsWhileHeaderAndControlsStayPinned(t *testing.T) {
 			t.Fatalf("initial viewport unexpectedly contains %q:\n%s", hidden, plain)
 		}
 	}
-	if arrowLine := standaloneIndicatorLine(lines, "↓"); arrowLine != len(lines)-3 {
-		t.Fatalf("down arrow line = %d, want bottom of location viewport at %d:\n%s", arrowLine, len(lines)-3, plain)
+	footerHeight := lipgloss.Height(model.dashboardFooter(model.contentWidth()))
+	if arrowLine := standaloneIndicatorLine(lines, "↓"); arrowLine != len(lines)-footerHeight-1 {
+		t.Fatalf("down arrow line = %d, want bottom of location viewport at %d:\n%s", arrowLine, len(lines)-footerHeight-1, plain)
 	}
 	if standaloneIndicatorLine(lines, "↑") >= 0 {
 		t.Fatalf("initial viewport unexpectedly contains an up indicator:\n%s", plain)
@@ -1157,8 +1161,9 @@ func TestLocationViewportScrollsWhileHeaderAndControlsStayPinned(t *testing.T) {
 	if strings.Contains(plain, "First Location") || strings.Contains(plain, "Fourth Location") {
 		t.Fatalf("scrolled viewport shows a location outside its window:\n%s", plain)
 	}
-	if arrowLine := standaloneIndicatorLine(lines, "↑"); arrowLine != 5 {
-		t.Fatalf("up arrow line = %d, want below the sort status at 5:\n%s", arrowLine, plain)
+	headerHeight := lipgloss.Height(model.dashboardHeader(model.contentWidth()))
+	if arrowLine := standaloneIndicatorLine(lines, "↑"); arrowLine != headerHeight {
+		t.Fatalf("up arrow line = %d, want below the dashboard status at %d:\n%s", arrowLine, headerHeight, plain)
 	}
 	upLine := standaloneIndicatorLine(lines, "↑")
 	downLine := standaloneIndicatorLine(lines, "↓")
@@ -1173,8 +1178,10 @@ func TestLocationViewportScrollsWhileHeaderAndControlsStayPinned(t *testing.T) {
 	if firstCardLine != initialFirstCardLine {
 		t.Fatalf("cards shifted when the top arrow appeared: initial row=%d scrolled row=%d\n%s", initialFirstCardLine, firstCardLine, plain)
 	}
-	if !strings.Contains(lines[0], "7/22") || !strings.Contains(lines[1], "12a") || !strings.Contains(lines[4], "sorting by: time added") ||
-		!strings.Contains(lines[len(lines)-2], "↑/↓/j/k") || strings.TrimSpace(lines[len(lines)-1]) != "" {
+	controlsLine = lineContaining(lines, "↑/↓/j/k")
+	if !strings.Contains(lines[0], "7/22") || !strings.Contains(lines[1], "12a") ||
+		!strings.Contains(lines[4], "sorting by: time added") || !strings.Contains(lines[5], "viewing: surf") ||
+		controlsLine < 0 || strings.TrimSpace(lines[len(lines)-1]) != "" {
 		t.Fatalf("fixed regions moved after scrolling:\n%s", plain)
 	}
 
@@ -1232,8 +1239,9 @@ func TestLocationViewportReflowsAroundSelectionAfterResize(t *testing.T) {
 	if !strings.Contains(lines[len(lines)-2], "↑/↓/j/k") || strings.TrimSpace(lines[len(lines)-1]) != "" {
 		t.Fatalf("compact layout did not keep controls at the bottom:\n%s", plain)
 	}
-	if !strings.Contains(lines[3], "sorting by: time added") || !strings.Contains(lines[len(lines)-2], "s sort") {
-		t.Fatalf("compact layout did not separate sort status from its bottom control:\n%s", plain)
+	if !strings.Contains(lines[3], "sorting by: time added") || !strings.Contains(lines[4], "viewing: surf") ||
+		!strings.Contains(lines[len(lines)-2], "s sort") || !strings.Contains(lines[len(lines)-2], "v view") {
+		t.Fatalf("compact layout did not separate status rows from their bottom controls:\n%s", plain)
 	}
 }
 
