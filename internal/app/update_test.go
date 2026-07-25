@@ -397,6 +397,36 @@ func TestRemovalConfirmationBlocksDashboardNavigation(t *testing.T) {
 	}
 }
 
+func TestRefreshConfirmationBlocksDashboardNavigation(t *testing.T) {
+	t.Parallel()
+
+	model := New(
+		resizeTestSearcher{},
+		resizeTestTracker{},
+		&appTestForecastProvider{},
+		[]surf.Spot{{ID: "honolua", Name: "Honolua Bay"}},
+		nil,
+	)
+	updatedModel, _ := model.Update(dashboard.ForecastLoadedMsg{SpotID: "honolua"})
+	updated := updatedModel.(Model)
+	updatedModel, _ = updated.Update(tea.KeyPressMsg{Code: 'r', Text: "r"})
+	updated = updatedModel.(Model)
+	if !updated.dashboard.ConfirmingRefresh() {
+		t.Fatal("r did not open refresh confirmation")
+	}
+
+	updatedModel, _ = updated.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
+	updated = updatedModel.(Model)
+	if updated.current != homeScreen || !updated.dashboard.ConfirmingRefresh() {
+		t.Fatal("search shortcut escaped the refresh confirmation")
+	}
+	updatedModel, cmd := updated.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
+	updated = updatedModel.(Model)
+	if cmd != nil || updated.current != homeScreen || !updated.dashboard.ConfirmingRefresh() {
+		t.Fatal("quit shortcut escaped the refresh confirmation")
+	}
+}
+
 func TestForecastDetailsPopoverBlocksDashboardShortcuts(t *testing.T) {
 	t.Parallel()
 

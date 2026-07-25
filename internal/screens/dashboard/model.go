@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 
 	"surfista/internal/surf"
@@ -13,18 +14,20 @@ import (
 const forecastTimeout = 20 * time.Second
 
 type forecastState struct {
-	forecast  surf.Forecast
-	updatedAt time.Time
-	loading   bool
-	fetched   bool
-	err       error
+	forecast   surf.Forecast
+	updatedAt  time.Time
+	loading    bool
+	fetched    bool
+	refreshing bool
+	err        error
 }
 
 type forecastDetailsState struct {
-	details   surf.ForecastDetails
-	updatedAt time.Time
-	loading   bool
-	err       error
+	details    surf.ForecastDetails
+	updatedAt  time.Time
+	loading    bool
+	refreshing bool
+	err        error
 }
 
 func (s forecastState) usable() bool {
@@ -74,6 +77,7 @@ type Model struct {
 	addedOrder        map[string]int
 	nextAddedOrder    int
 	now               func() time.Time
+	refreshSpinner    spinner.Model
 }
 
 func New(provider surf.ForecastProvider, remover Remover, spots []surf.Spot, loadErr error) Model {
@@ -132,6 +136,9 @@ func New(provider surf.ForecastProvider, remover Remover, spots []surf.Spot, loa
 		addedOrder:      addedOrder,
 		nextAddedOrder:  len(spots),
 		now:             time.Now,
+		refreshSpinner: spinner.New(
+			spinner.WithSpinner(spinner.MiniDot),
+		),
 	}
 	model.applySort()
 	return model
@@ -218,6 +225,7 @@ func (m *Model) refresh() tea.Cmd {
 			state := m.forecasts[spot.ID]
 			if !state.loading {
 				state.loading = true
+				state.refreshing = true
 				state.err = nil
 				m.forecasts[spot.ID] = state
 				commands = append(commands, m.fetchForecast(spot.ID))
@@ -227,6 +235,7 @@ func (m *Model) refresh() tea.Cmd {
 			state := m.details[spot.ID]
 			if !state.loading {
 				state.loading = true
+				state.refreshing = true
 				state.err = nil
 				m.details[spot.ID] = state
 				commands = append(commands, m.fetchForecastDetails(spot.ID))
@@ -236,7 +245,21 @@ func (m *Model) refresh() tea.Cmd {
 	if len(commands) == 0 {
 		return nil
 	}
+	commands = append(commands, m.refreshSpinner.Tick)
 	return tea.Batch(commands...)
+}
+
+func (m Model) spotRefreshing(spotID string) bool {
+	return m.forecasts[spotID].refreshing || m.details[spotID].refreshing
+}
+
+func (m Model) hasActiveRefreshes() bool {
+	for _, spot := range m.spots {
+		if m.spotRefreshing(spot.ID) {
+			return true
+		}
+	}
+	return false
 }
 
 // PendingInitialFetches reports how many startup Surfline requests are still

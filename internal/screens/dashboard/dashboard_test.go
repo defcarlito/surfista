@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
@@ -211,6 +212,10 @@ func TestRRefreshesAllCachedForecastDataWithoutClearingFallback(t *testing.T) {
 		if !details.loading || details.err != nil || details.details.Units.WindSpeed != "cached" {
 			t.Fatalf("refresh cleared cached details for %s: %+v", spot.ID, details)
 		}
+		nameLine := ansi.Strip(model.spotNameLine(spot.Name, 80, forecast, true))
+		if !strings.Contains(nameLine, ansi.Strip(model.refreshSpinner.View())+" 2h ago") {
+			t.Fatalf("refresh spinner is not immediately left of cached age for %s: %q", spot.ID, nameLine)
+		}
 	}
 	model, duplicate := model.Update(dashboardKey('r'))
 	if duplicate != nil || !model.confirmRefresh {
@@ -222,8 +227,25 @@ func TestRRefreshesAllCachedForecastDataWithoutClearingFallback(t *testing.T) {
 	}
 
 	messages := commandMessages(t, cmd)
-	if len(messages) != len(spots)*2 {
-		t.Fatalf("refresh messages = %d, want %d", len(messages), len(spots)*2)
+	refreshMessages := make([]tea.Msg, 0, len(spots)*2)
+	var spinnerMessage spinner.TickMsg
+	for _, message := range messages {
+		switch message := message.(type) {
+		case ForecastLoadedMsg, ForecastDetailsLoadedMsg:
+			refreshMessages = append(refreshMessages, message)
+		case spinner.TickMsg:
+			spinnerMessage = message
+		}
+	}
+	if len(refreshMessages) != len(spots)*2 {
+		t.Fatalf("refresh messages = %d, want %d", len(refreshMessages), len(spots)*2)
+	}
+	if spinnerMessage.ID == 0 {
+		t.Fatal("confirmed refresh did not start spinner animation")
+	}
+	model, nextSpinnerTick := model.Update(spinnerMessage)
+	if nextSpinnerTick == nil {
+		t.Fatal("active refresh spinner did not schedule its next frame")
 	}
 	if got := strings.Join(provider.spotIDs, ","); got != "first,second" {
 		t.Fatalf("forecast refresh spot IDs = %q, want first,second", got)
@@ -231,8 +253,11 @@ func TestRRefreshesAllCachedForecastDataWithoutClearingFallback(t *testing.T) {
 	if got := strings.Join(provider.detailSpotIDs, ","); got != "first,second" {
 		t.Fatalf("details refresh spot IDs = %q, want first,second", got)
 	}
-	for _, message := range messages {
+	for _, message := range refreshMessages {
 		model, _ = model.Update(message)
+	}
+	if model.hasActiveRefreshes() {
+		t.Fatal("completed refresh left pending spinner state")
 	}
 	for _, spot := range spots {
 		forecast := model.forecasts[spot.ID]
@@ -243,6 +268,47 @@ func TestRRefreshesAllCachedForecastDataWithoutClearingFallback(t *testing.T) {
 		if details.loading || details.err != nil || details.details.Units.WindSpeed != "KTS" || details.updatedAt != now {
 			t.Fatalf("refreshed details for %s = %+v", spot.ID, details)
 		}
+		nameLine := ansi.Strip(model.spotNameLine(spot.Name, 80, forecast, model.spotRefreshing(spot.ID)))
+		if strings.Contains(nameLine, ansi.Strip(model.refreshSpinner.View())+" ") {
+			t.Fatalf("completed refresh still shows spinner for %s: %q", spot.ID, nameLine)
+		}
+	}
+}
+
+func TestManualRefreshSpinnerIgnoresFinishingInitialRequests(t *testing.T) {
+	t.Parallel()
+
+	model := New(
+		&fakeForecastProvider{},
+		nil,
+		[]surf.Spot{{ID: "honolua", Name: "Honolua Bay"}},
+		nil,
+	)
+	model, _ = model.Update(ForecastLoadedMsg{
+		SpotID:   "honolua",
+		Forecast: surf.Forecast{SpotID: "honolua"},
+	})
+
+	model, _ = model.Update(dashboardKey('r'))
+	model, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if cmd == nil || !model.forecasts["honolua"].refreshing || model.details["honolua"].refreshing {
+		t.Fatal("manual refresh did not track only the newly started forecast request")
+	}
+
+	model, _ = model.Update(ForecastDetailsLoadedMsg{
+		SpotID:  "honolua",
+		Details: surf.ForecastDetails{SpotID: "honolua"},
+	})
+	if !model.spotRefreshing("honolua") {
+		t.Fatal("finishing an initial details request stopped the manual refresh spinner")
+	}
+
+	model, _ = model.Update(ForecastLoadedMsg{
+		SpotID:   "honolua",
+		Forecast: surf.Forecast{SpotID: "honolua"},
+	})
+	if model.spotRefreshing("honolua") {
+		t.Fatal("spinner remained active after the manual forecast request finished")
 	}
 }
 
@@ -288,7 +354,7 @@ func TestFailedRefreshKeepsCachedForecastAndShowsAge(t *testing.T) {
 	if !strings.Contains(card, styledAge) {
 		t.Fatal("cached age does not use the dashboard subtitle color")
 	}
-	nameLine := ansi.Strip(model.spotNameLine("Honolua Bay", 80, state))
+	nameLine := ansi.Strip(model.spotNameLine("Honolua Bay", 80, state, false))
 	if !strings.HasSuffix(nameLine, "1h ago ") {
 		t.Fatalf("cached age does not have right-border spacing: %q", nameLine)
 	}
@@ -341,7 +407,7 @@ func TestSuccessfulRefreshReplacesAndPersistsCache(t *testing.T) {
 		got.ForecastUpdatedAt != now || got.DetailsUpdatedAt != now {
 		t.Fatalf("persisted cache entry = %+v", got)
 	}
-	nameLine := ansi.Strip(model.spotNameLine("Honolua Bay", 80, model.forecasts["honolua"]))
+	nameLine := ansi.Strip(model.spotNameLine("Honolua Bay", 80, model.forecasts["honolua"], false))
 	if !strings.HasSuffix(nameLine, "now ") {
 		t.Fatalf("successful fetch freshness = %q, want now", nameLine)
 	}

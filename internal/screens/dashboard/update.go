@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 
 	"surfista/internal/surf"
@@ -19,6 +20,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m, nil
 		}
 		state.loading = false
+		state.refreshing = false
 		state.err = msg.Err
 		if msg.Err == nil {
 			state.forecast = msg.Forecast
@@ -37,6 +39,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m, nil
 		}
 		state.loading = false
+		state.refreshing = false
 		state.err = msg.Err
 		if msg.Err == nil {
 			state.details = msg.Details
@@ -49,6 +52,13 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				m.applySort()
 			}
 		}
+	case spinner.TickMsg:
+		if !m.hasActiveRefreshes() {
+			return m, nil
+		}
+		var cmd tea.Cmd
+		m.refreshSpinner, cmd = m.refreshSpinner.Update(msg)
+		return m, cmd
 	case SpotRemovedMsg:
 		if !m.confirmRemoval || msg.SpotID != m.removalSpot.ID {
 			return m, nil

@@ -60,7 +60,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		switch m.current {
 		case homeScreen:
-			if m.dashboard.ConfirmingRemoval() || m.dashboard.ShowingDetails() {
+			if m.dashboard.ConfirmingRemoval() || m.dashboard.ConfirmingRefresh() || m.dashboard.ShowingDetails() {
 				break
 			}
 			switch key.String() {

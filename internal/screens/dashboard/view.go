@@ -510,7 +510,7 @@ func (m Model) forecastTable(width int) string {
 func (m Model) spotCard(spot surf.Spot, slotWidth int, selected bool) string {
 	state := m.forecasts[spot.ID]
 	innerWidth := slotWidth*len(dashboardHours) + len(dashboardHours) - 1
-	name := m.spotNameLine(spot.Name, innerWidth, state)
+	name := m.spotNameLine(spot.Name, innerWidth, state, m.spotRefreshing(spot.ID))
 
 	if state.loading && !state.usable() {
 		return statusCard(name, ui.Muted("Loading forecast…"), innerWidth, selected)
@@ -549,9 +549,12 @@ func (m Model) spotCard(spot surf.Spot, slotWidth int, selected bool) string {
 	}, "\n")
 }
 
-func (m Model) spotNameLine(name string, width int, state forecastState) string {
+func (m Model) spotNameLine(name string, width int, state forecastState, refreshing bool) string {
 	styledName := ui.DashboardSpotStyle.Render(ansi.Truncate(name, width, ""))
 	if state.updatedAt.IsZero() {
+		if refreshing {
+			return m.spotNameLineWithFreshness(styledName, width, m.refreshSpinner.View())
+		}
 		return lipgloss.NewStyle().Width(width).MaxWidth(width).Align(lipgloss.Center).Render(styledName)
 	}
 
@@ -559,6 +562,13 @@ func (m Model) spotNameLine(name string, width int, state forecastState) string 
 	if state.fetched && !state.loading && state.err == nil {
 		freshness = "now"
 	}
+	if refreshing {
+		freshness = m.refreshSpinner.View() + " " + freshness
+	}
+	return m.spotNameLineWithFreshness(styledName, width, freshness)
+}
+
+func (m Model) spotNameLineWithFreshness(styledName string, width int, freshness string) string {
 	styledFreshness := ui.DashboardSubtitleStyle.Render(freshness)
 	canvas := lipgloss.NewCanvas(width, 1)
 	line := canvas.Compose(lipgloss.NewCompositor(
