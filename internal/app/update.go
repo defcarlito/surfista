@@ -10,6 +10,9 @@ import (
 )
 
 func (m Model) Init() tea.Cmd {
+	if m.current != loadingScreen {
+		return m.dashboard.Init()
+	}
 	return tea.Batch(m.dashboard.Init(), m.loading.Init(), m.startupWaitCmd())
 }
 

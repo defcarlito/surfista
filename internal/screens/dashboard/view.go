@@ -557,23 +557,26 @@ func (m Model) spotNameLine(name string, width int, state forecastState, fetchin
 	}
 	if displayUpdatedAt.IsZero() {
 		if fetching {
-			return m.spotNameLineWithFreshness(styledName, width, m.refreshSpinner.View())
+			return m.spotNameLineWithFreshness(styledName, width, m.refreshSpinner.View(), false)
 		}
 		return lipgloss.NewStyle().Width(width).MaxWidth(width).Align(lipgloss.Center).Render(styledName)
 	}
 
 	freshness := "updated " + formatForecastAge(m.now(), displayUpdatedAt)
-	if state.fetched && !state.loading && state.err == nil && !fetching {
+	if state.fetched && !state.loading && state.err == nil && !state.refreshFailed && !fetching {
 		freshness = "updated now"
 	}
 	if fetching {
 		freshness = m.refreshSpinner.View() + " " + freshness
 	}
-	return m.spotNameLineWithFreshness(styledName, width, freshness)
+	return m.spotNameLineWithFreshness(styledName, width, freshness, state.refreshFailed && !fetching)
 }
 
-func (m Model) spotNameLineWithFreshness(styledName string, width int, freshness string) string {
+func (m Model) spotNameLineWithFreshness(styledName string, width int, freshness string, refreshFailed bool) string {
 	styledFreshness := ui.DashboardSubtitleStyle.Render(freshness)
+	if refreshFailed {
+		styledFreshness = ui.ErrorStyle.Render("●") + " " + styledFreshness
+	}
 	canvas := lipgloss.NewCanvas(width, 1)
 	line := canvas.Compose(lipgloss.NewCompositor(
 		lipgloss.NewLayer(styledName).X(max(0, (width-lipgloss.Width(styledName))/2)),

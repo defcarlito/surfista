@@ -98,7 +98,7 @@ func TestForecastResultUpdatesOnlyTrackedSpot(t *testing.T) {
 	}
 }
 
-func TestCachedForecastsStillCountPendingInitialRefreshes(t *testing.T) {
+func TestCachedForecastsDoNotStartInitialRefreshes(t *testing.T) {
 	t.Parallel()
 
 	updatedAt := time.Date(2026, time.July, 22, 12, 0, 0, 0, time.UTC)
@@ -114,17 +114,17 @@ func TestCachedForecastsStillCountPendingInitialRefreshes(t *testing.T) {
 	provider := &fakeForecastProvider{}
 	model := New(provider, cache, []surf.Spot{{ID: "honolua", Name: "Honolua Bay"}}, nil)
 
-	if pending := model.PendingInitialFetches(); pending != 2 {
-		t.Fatalf("pending initial fetches = %d, want 2 despite a complete cache", pending)
+	if pending := model.PendingInitialFetches(); pending != 0 {
+		t.Fatalf("pending initial fetches = %d, want 0 with a complete cache", pending)
 	}
-	if got := model.forecasts["honolua"]; got.updatedAt != updatedAt || got.forecast.Slots[0].Rating != "Fair" || !got.loading {
+	if got := model.forecasts["honolua"]; got.updatedAt != updatedAt || got.forecast.Slots[0].Rating != "Fair" || got.loading {
 		t.Fatalf("hydrated forecast state = %+v", got)
 	}
-	if got := model.details["honolua"]; got.updatedAt != updatedAt || len(got.details.Slots) != 1 || !got.loading {
+	if got := model.details["honolua"]; got.updatedAt != updatedAt || len(got.details.Slots) != 1 || got.loading {
 		t.Fatalf("hydrated detail state = %+v", got)
 	}
-	if messages := commandMessages(t, model.Init()); len(messages) != 2 {
-		t.Fatalf("background refresh messages = %d, want 2", len(messages))
+	if model.Init() != nil {
+		t.Fatal("complete cache unexpectedly produced startup refresh commands")
 	}
 }
 
@@ -187,11 +187,6 @@ func TestRRefreshesAllCachedForecastDataWithoutClearingFallback(t *testing.T) {
 	model := New(provider, cache, spots, nil)
 	model.now = func() time.Time { return now }
 	model.selectedIndex = 1
-	for _, spot := range spots {
-		model, _ = model.Update(ForecastLoadedMsg{SpotID: spot.ID, Err: errors.New("initial forecast failed")})
-		model, _ = model.Update(ForecastDetailsLoadedMsg{SpotID: spot.ID, Err: errors.New("initial details failed")})
-	}
-
 	model, cmd := model.Update(dashboardKey('r'))
 	if cmd != nil || !model.confirmRefresh {
 		t.Fatal("r did not open refresh confirmation without starting requests")
@@ -333,8 +328,6 @@ func TestRefreshKeepsPreviousAgeUntilAllSpotRequestsFinish(t *testing.T) {
 		nil,
 	)
 	model.now = func() time.Time { return now }
-	model, _ = model.Update(ForecastLoadedMsg{SpotID: "honolua", Err: errors.New("initial forecast failed")})
-	model, _ = model.Update(ForecastDetailsLoadedMsg{SpotID: "honolua", Err: errors.New("initial details failed")})
 	model, _ = model.Update(dashboardKey('r'))
 	model, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 
@@ -422,7 +415,76 @@ func TestFailedRefreshKeepsCachedForecastAndShowsAge(t *testing.T) {
 	}
 }
 
-func TestBackgroundRefreshIdentifiesCachedForecastAge(t *testing.T) {
+func TestManualRefreshFailureShowsRedDotUntilSuccessfulRefresh(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.July, 24, 12, 0, 0, 0, time.UTC)
+	updatedAt := now.Add(-2 * time.Hour)
+	cache := &fakeForecastCache{entries: map[string]surf.ForecastCacheEntry{
+		"honolua": {
+			SpotID: "honolua",
+			Forecast: surf.Forecast{SpotID: "honolua", Slots: []surf.ForecastSlot{{
+				Timestamp: now,
+				Rating:    "Fair",
+			}}},
+			ForecastUpdatedAt: updatedAt,
+			Details:           surf.ForecastDetails{SpotID: "honolua"},
+			DetailsUpdatedAt:  updatedAt,
+		},
+	}}
+	model := New(
+		&fakeForecastProvider{},
+		cache,
+		[]surf.Spot{{ID: "honolua", Name: "Honolua Bay"}},
+		nil,
+	)
+	model.now = func() time.Time { return now }
+
+	model, _ = model.Update(dashboardKey('r'))
+	model, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model, _ = model.Update(ForecastLoadedMsg{
+		SpotID:   "honolua",
+		Forecast: surf.Forecast{SpotID: "honolua", Slots: []surf.ForecastSlot{{Timestamp: now, Rating: "Good"}}},
+	})
+	model, _ = model.Update(ForecastDetailsLoadedMsg{
+		SpotID: "honolua",
+		Err:    errors.New("Surfline wind forecast returned 403"),
+	})
+
+	state := model.forecasts["honolua"]
+	if !state.refreshFailed || state.manualRefresh || model.spotFetching("honolua") {
+		t.Fatalf("completed failed refresh state = %+v", state)
+	}
+	nameLine := model.spotNameLine("Honolua Bay", 80, state, false)
+	if !strings.Contains(ansi.Strip(nameLine), "● updated 1m ago") {
+		t.Fatalf("failed refresh does not show a dot left of its age: %q", ansi.Strip(nameLine))
+	}
+	if !strings.Contains(nameLine, "\x1b[31;1m●") {
+		t.Fatalf("failed refresh dot does not use the error color: %q", nameLine)
+	}
+
+	model, _ = model.Update(dashboardKey('r'))
+	model, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model, _ = model.Update(ForecastLoadedMsg{
+		SpotID:   "honolua",
+		Forecast: surf.Forecast{SpotID: "honolua", Slots: []surf.ForecastSlot{{Timestamp: now, Rating: "Good"}}},
+	})
+	model, _ = model.Update(ForecastDetailsLoadedMsg{
+		SpotID:  "honolua",
+		Details: surf.ForecastDetails{SpotID: "honolua"},
+	})
+
+	state = model.forecasts["honolua"]
+	nameLine = model.spotNameLine("Honolua Bay", 80, state, false)
+	if state.refreshFailed || strings.Contains(ansi.Strip(nameLine), "●") {
+		t.Fatalf("successful refresh did not clear the failure dot: %q", ansi.Strip(nameLine))
+	}
+	if !strings.Contains(ansi.Strip(nameLine), "updated now") {
+		t.Fatalf("successful retry freshness = %q, want updated now", ansi.Strip(nameLine))
+	}
+}
+
+func TestCachedForecastDoesNotStartBackgroundRefresh(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, time.July, 24, 12, 0, 0, 0, time.UTC)
@@ -442,13 +504,16 @@ func TestBackgroundRefreshIdentifiesCachedForecastAge(t *testing.T) {
 
 	plain := ansi.Strip(model.spotCard(model.spots[0], 10, false))
 	if !strings.Contains(plain, "Fair") || !strings.Contains(plain, "updated 2h ago") {
-		t.Fatalf("background refresh does not identify cached data and its age:\n%s", plain)
+		t.Fatalf("cached startup does not identify cached data and its age:\n%s", plain)
 	}
-	if !strings.Contains(plain, ansi.Strip(model.refreshSpinner.View())+" updated 2h ago") {
-		t.Fatalf("background refresh does not show a spinner beside the cached age:\n%s", plain)
+	if strings.Contains(plain, ansi.Strip(model.refreshSpinner.View())+" updated 2h ago") {
+		t.Fatalf("cached startup unexpectedly shows a refresh spinner:\n%s", plain)
 	}
 	if strings.Contains(plain, "Last updated") {
-		t.Fatalf("background refresh includes the removed last-updated prefix:\n%s", plain)
+		t.Fatalf("cached startup includes the removed last-updated prefix:\n%s", plain)
+	}
+	if model.Init() != nil {
+		t.Fatal("cached startup unexpectedly produced forecast commands")
 	}
 }
 

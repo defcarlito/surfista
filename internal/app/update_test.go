@@ -3,12 +3,10 @@ package app
 import (
 	"context"
 	"errors"
-	"strings"
 	"testing"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/x/ansi"
 
 	"surfista/internal/screens/dashboard"
 	"surfista/internal/surf"
@@ -115,7 +113,7 @@ func TestInitialLoadingWaitsForPrefetchedForecastDetails(t *testing.T) {
 	}
 }
 
-func TestCompleteForecastCacheShowsInitialRefreshProgress(t *testing.T) {
+func TestCompleteForecastCacheOpensDashboardWithoutInitialFetch(t *testing.T) {
 	t.Parallel()
 
 	updatedAt := time.Date(2026, time.July, 22, 12, 0, 0, 0, time.UTC)
@@ -137,37 +135,18 @@ func TestCompleteForecastCacheShowsInitialRefreshProgress(t *testing.T) {
 		[]surf.Spot{{ID: "honolua"}},
 		nil,
 	)
-	if model.current != loadingScreen || model.initialForecasts != 2 {
-		t.Fatalf("cached initial state = screen %v loads %d, want loading screen with 2 refreshes", model.current, model.initialForecasts)
+	if model.current != homeScreen || model.initialForecasts != 0 {
+		t.Fatalf("cached initial state = screen %v loads %d, want home screen with no refreshes", model.current, model.initialForecasts)
 	}
-	if loadingView := ansi.Strip(model.loading.View()); !strings.Contains(loadingView, "Locations loaded 0/1") {
-		t.Fatalf("cached startup does not show initial fetch progress:\n%s", loadingView)
+	if !model.dashboard.HasUsableForecasts() {
+		t.Fatal("cached startup did not hydrate the dashboard forecast")
 	}
-	if model.Init() == nil {
-		t.Fatal("cached startup did not retain its refresh commands")
-	}
-
-	updatedModel, _ := model.Update(dashboard.ForecastLoadedMsg{SpotID: "honolua"})
-	updated := updatedModel.(Model)
-	if updated.current != loadingScreen {
-		t.Fatal("cached startup opened the dashboard before detail refresh completed")
-	}
-	if loadingView := ansi.Strip(updated.loading.View()); !strings.Contains(loadingView, "Fetching forecasts 0/1") ||
-		strings.Contains(loadingView, "Locations loaded") {
-		t.Fatalf("cached startup did not advance fetch progress:\n%s", loadingView)
-	}
-
-	updatedModel, _ = updated.Update(dashboard.ForecastDetailsLoadedMsg{
-		SpotID: "honolua",
-		Err:    errors.New("details unavailable"),
-	})
-	updated = updatedModel.(Model)
-	if updated.current != homeScreen {
-		t.Fatal("cached startup did not open the dashboard after all refreshes resolved")
+	if model.Init() != nil {
+		t.Fatal("cached startup unexpectedly launched forecast commands")
 	}
 }
 
-func TestEnterSkipsStartupWhenCacheIsAvailable(t *testing.T) {
+func TestEnterDoesNotStartRefreshWhenCacheIsAvailable(t *testing.T) {
 	t.Parallel()
 
 	updatedAt := time.Date(2026, time.July, 24, 12, 0, 0, 0, time.UTC)
@@ -187,17 +166,17 @@ func TestEnterSkipsStartupWhenCacheIsAvailable(t *testing.T) {
 		[]surf.Spot{{ID: "honolua", Name: "Honolua Bay"}},
 		nil,
 	)
-	if !model.loading.CanSkip() {
-		t.Fatal("cached startup did not enable the skip control")
+	if model.current != homeScreen {
+		t.Fatal("cached startup did not open directly on the dashboard")
 	}
 
 	updatedModel, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	updated := updatedModel.(Model)
-	if cmd == nil || updated.current != homeScreen {
-		t.Fatal("enter did not skip startup loading and start the dashboard spinner")
+	if cmd != nil || updated.current != homeScreen {
+		t.Fatal("enter unexpectedly started a cached startup refresh")
 	}
-	if pending := updated.dashboard.PendingInitialFetches(); pending != 2 {
-		t.Fatalf("background refreshes after manual skip = %d, want 2", pending)
+	if pending := updated.dashboard.PendingInitialFetches(); pending != 0 {
+		t.Fatalf("background refreshes after cached startup = %d, want 0", pending)
 	}
 }
 
@@ -222,7 +201,7 @@ func TestEnterDoesNotSkipStartupWithoutCache(t *testing.T) {
 	}
 }
 
-func TestStartupWaitExpiryOpensDashboardWhileRefreshContinues(t *testing.T) {
+func TestCachedStartupIgnoresWaitExpiry(t *testing.T) {
 	t.Parallel()
 
 	updatedAt := time.Date(2026, time.July, 24, 12, 0, 0, 0, time.UTC)
@@ -247,29 +226,11 @@ func TestStartupWaitExpiryOpensDashboardWhileRefreshContinues(t *testing.T) {
 
 	updatedModel, cmd := model.Update(startupWaitExpiredMsg{})
 	updated := updatedModel.(Model)
-	if cmd == nil || updated.current != homeScreen {
-		t.Fatal("startup wait expiry did not open the cached dashboard and start its spinner")
+	if cmd != nil || updated.current != homeScreen {
+		t.Fatal("cached dashboard reacted to an inactive startup wait")
 	}
-	if pending := updated.dashboard.PendingInitialFetches(); pending != 2 {
-		t.Fatalf("background refreshes after startup expiry = %d, want 2", pending)
-	}
-
-	updatedModel, _ = updated.Update(dashboard.ForecastLoadedMsg{
-		SpotID: "honolua",
-		Err:    errors.New("base forecast still unavailable"),
-	})
-	updated = updatedModel.(Model)
-	if updated.current != homeScreen || updated.dashboard.PendingInitialFetches() != 1 {
-		t.Fatal("base forecast result did not continue updating after the dashboard opened")
-	}
-
-	updatedModel, _ = updated.Update(dashboard.ForecastDetailsLoadedMsg{
-		SpotID: "honolua",
-		Err:    errors.New("details still unavailable"),
-	})
-	updated = updatedModel.(Model)
-	if updated.current != homeScreen || updated.dashboard.PendingInitialFetches() != 0 {
-		t.Fatal("detail result did not finish in the background")
+	if pending := updated.dashboard.PendingInitialFetches(); pending != 0 {
+		t.Fatalf("cached startup has %d pending refreshes, want 0", pending)
 	}
 }
 

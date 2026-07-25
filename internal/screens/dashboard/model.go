@@ -20,6 +20,8 @@ type forecastState struct {
 	fetchDisplaySet bool
 	loading         bool
 	fetched         bool
+	manualRefresh   bool
+	refreshFailed   bool
 	err             error
 }
 
@@ -92,15 +94,14 @@ func New(provider surf.ForecastProvider, remover Remover, spots []surf.Spot, loa
 	states := make(map[string]forecastState, len(spots))
 	detailStates := make(map[string]forecastDetailsState, len(spots))
 	for _, spot := range spots {
-		entry := cached[spot.ID]
-		forecastLoading := provider != nil
-		detailsLoading := detailsProvider != nil
+		entry, hasCache := cached[spot.ID]
+		hasCache = hasCache && (!entry.ForecastUpdatedAt.IsZero() || len(entry.Forecast.Slots) > 0)
+		forecastLoading := !hasCache && provider != nil
+		detailsLoading := !hasCache && detailsProvider != nil
 		states[spot.ID] = forecastState{
-			forecast:        entry.Forecast,
-			updatedAt:       entry.ForecastUpdatedAt,
-			fetchDisplayAt:  entry.ForecastUpdatedAt,
-			fetchDisplaySet: forecastLoading || detailsLoading,
-			loading:         forecastLoading,
+			forecast:  entry.Forecast,
+			updatedAt: entry.ForecastUpdatedAt,
+			loading:   forecastLoading,
 		}
 		detailStates[spot.ID] = forecastDetailsState{
 			details:   entry.Details,
@@ -212,8 +213,12 @@ func (m *Model) removeSpot(spotID string) {
 func (m Model) Init() tea.Cmd {
 	commands := make([]tea.Cmd, 0, len(m.spots)*2)
 	for _, spot := range m.spots {
-		commands = append(commands, m.fetchForecast(spot.ID))
-		commands = append(commands, m.fetchForecastDetails(spot.ID))
+		if m.forecasts[spot.ID].loading {
+			commands = append(commands, m.fetchForecast(spot.ID))
+		}
+		if m.details[spot.ID].loading {
+			commands = append(commands, m.fetchForecastDetails(spot.ID))
+		}
 	}
 	return tea.Batch(commands...)
 }
@@ -252,6 +257,15 @@ func (m *Model) refresh() tea.Cmd {
 			state := m.forecasts[spot.ID]
 			state.fetchDisplayAt = previousUpdatedAt
 			state.fetchDisplaySet = true
+			state.refreshFailed = false
+			state.manualRefresh = true
+			m.forecasts[spot.ID] = state
+		} else if started {
+			state := m.forecasts[spot.ID]
+			if !state.manualRefresh {
+				state.refreshFailed = false
+			}
+			state.manualRefresh = true
 			m.forecasts[spot.ID] = state
 		}
 	}
@@ -294,6 +308,7 @@ func (m *Model) finishSpotFetch(spotID string) {
 	}
 	state.fetchDisplayAt = time.Time{}
 	state.fetchDisplaySet = false
+	state.manualRefresh = false
 	m.forecasts[spotID] = state
 }
 

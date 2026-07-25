@@ -21,6 +21,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 		state.loading = false
 		state.err = msg.Err
+		if msg.Err != nil && state.manualRefresh {
+			state.refreshFailed = true
+		}
 		if msg.Err == nil {
 			state.forecast = msg.Forecast
 			state.updatedAt = m.now()
@@ -40,6 +43,11 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 		state.loading = false
 		state.err = msg.Err
+		forecastState := m.forecasts[msg.SpotID]
+		if msg.Err != nil && forecastState.manualRefresh {
+			forecastState.refreshFailed = true
+			m.forecasts[msg.SpotID] = forecastState
+		}
 		if msg.Err == nil {
 			state.details = msg.Details
 			state.updatedAt = m.now()
