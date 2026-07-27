@@ -1,5 +1,9 @@
 # Surfista
 
+<p align="center">
+  <img src="assets/demo.gif" alt="Surfista demo">
+</p>
+
 A minimalist terminal user interface (TUI) for finding, tracking, and comparing surf spots. Explore ten days of Surfline forecasts, including surf height, ratings, swell, wind, tides, temperature, and daylight, without leaving your terminal.
 
 Surfista was built to compare your favorite surf breaks at a glance. Sort spots by current or future conditions, move through the ten-day outlook, and open detailed forecasts when you want a closer look.
